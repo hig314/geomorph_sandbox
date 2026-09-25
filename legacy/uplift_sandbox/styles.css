@@ -1,0 +1,112 @@
+:root {
+  --bg: #fafafa;
+  --panel-bg: #ffffff;
+  --ink: #222;
+  --muted: #666;
+  --line: #e2e2e2;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.4;
+}
+
+header {
+  padding: 20px 24px 8px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+header h1 { margin: 0 0 4px; font-size: 20px; }
+header p { margin: 0; color: var(--muted); font-size: 13px; max-width: 760px; }
+
+.layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 12px 24px 40px;
+  max-width: 1180px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+
+#charts {
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 8px 4px;
+  flex: 1 1 760px;
+}
+.panel { display: block; }
+.panel + .panel { border-top: 1px dashed var(--line); }
+
+/* Controls */
+#sidebar { flex: 0 1 280px; min-width: 240px; }
+#controls {
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.control { margin-bottom: 14px; }
+.control label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.control .val { color: var(--ink); font-weight: 600; }
+.control input[type="range"] { width: 100%; }
+.control select {
+  width: 100%;
+  padding: 5px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+}
+
+#readout {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+#readout b { color: var(--ink); }
+
+.legend {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.legend span { display: inline-flex; align-items: center; margin-right: 12px; }
+.legend i {
+  width: 16px; height: 0;
+  border-top: 2px solid currentColor;
+  display: inline-block;
+  margin-right: 4px;
+}
+.legend i.dash { border-top-style: dashed; }
+
+/* SVG axes */
+.axis path, .axis line { stroke: #ccc; }
+.axis text { fill: var(--muted); font-size: 10px; }
+.axis-label { fill: var(--muted); font-size: 11px; }
+.panel-title { font-size: 12px; font-weight: 600; }
+.endlabel { font-size: 10px; font-weight: 600; }
+
+footer {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px 30px;
+  font-size: 11px;
+  color: var(--muted);
+}
+footer code { background: #eee; padding: 1px 4px; border-radius: 3px; }

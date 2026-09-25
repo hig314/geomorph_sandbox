@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>1D Uplift &amp; Erosion Sandbox</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>1D Uplift &amp; Erosion Sandbox</h1>
+    <p>
+      Relief is a reservoir: <b>uplift</b> fills it, <b>erosion</b> drains it.
+      Erosion grows nonlinearly with relief (E&nbsp;=&nbsp;k·R<sup>n</sup>), so
+      relief hits a near-constant <i>relief limit</i> that depends only weakly on
+      uplift rate. Drag the controls and watch relief lag the forcing while
+      erosion chases it.
+    </p>
+  </header>
+
+  <div class="layout">
+    <div id="charts"></div>
+
+    <div id="sidebar">
+      <div id="controls"></div>
+      <div class="legend">
+        <span style="color:#238b45"><i></i>relief R</span>
+        <span style="color:#999"><i class="dash"></i>equilibrium R</span><br/>
+        <span style="color:#d94801"><i></i>erosion</span>
+        <span style="color:#888"><i class="dash"></i>uplift flux</span>
+      </div>
+      <div id="readout"></div>
+    </div>
+  </div>
+
+  <footer>
+    Model: <code>dR/dt = U(t) − k·R<sup>n</sup></code>, integrated with RK4.
+    Equilibrium relief <code>R_eq = (U/k)<sup>1/n</sup></code>. Pure model logic
+    lives in <code>model.js</code> (no DOM), rendering in <code>app.js</code> —
+    so the engine can drop into a landslidescience.org Django template later.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

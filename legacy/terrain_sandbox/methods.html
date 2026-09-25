@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Methods &amp; References — 2D Terrain Evolution Sandbox</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Methods &amp; References <a class="navlink" href="index.html">← Back to sandbox</a></h1>
+    <p>
+      How each process in the sandbox works, the governing equations, the
+      numerical scheme, and the literature used to build it. This is a
+      deliberately simplified, <i>plausible</i> landscape-evolution model — not a
+      research-grade solver — but every process traces to a real method.
+    </p>
+  </header>
+
+  <main class="methods">
+    <section>
+      <h2>Model structure</h2>
+      <p>
+        Elevation lives on a 400×400 grid (50 m cells → 20 km domain) as a
+        <b>float32</b> field. Each timestep applies, in order:
+        <b>uplift → fluvial incision → hillslope creep</b> (deep-seated failure
+        and glacial erosion are planned). Compute is a CPU reference
+        implementation; the parallel-friendly kernels are structured to port to
+        WebGPU later. See <code>DESIGN.md</code> for the full roadmap.
+      </p>
+      <p class="eq">general mass balance: <code>∂z/∂t = U − E<sub>fluvial</sub> − ∇·q<sub>hillslope</sub></code></p>
+      <p>
+        <b>Uplift U(x,y)</b> is spatially varying, with three patterns: an
+        <b>edge ramp</b> (zero at the rim, ramping to full over a band of cells,
+        then flat — holds the rim as a low base level while the interior rises);
+        a <b>Gaussian</b> centred dome (peak in the middle, smoothly → 0 at the
+        edges); and a <b>tilting plane</b> (linear across the domain, draining off
+        the down-tilt edge). The domain edge is a low-rim base-level outlet, so
+        sediment leaves wherever the interior slopes outward.
+      </p>
+    </section>
+
+    <section>
+      <h2>1 · Initial topography</h2>
+      <p>
+        Three seeded generators: a tilted plane (control), <b>fractal hills</b>
+        (summed-octave value-noise / fractional Brownian motion), and scattered
+        cones. FBM sums octaves of smoothly interpolated lattice noise with a
+        persistence falloff — the standard procedural-terrain construction.
+      </p>
+      <ul class="refs">
+        <li>Perlin (1985), <i>An image synthesizer</i>, SIGGRAPH —
+          <a href="https://doi.org/10.1145/325165.325247">doi:10.1145/325165.325247</a></li>
+        <li>Quílez, <i>fBM</i> (practical multi-octave noise) —
+          <a href="https://iquilezles.org/articles/fbm/">iquilezles.org/articles/fbm</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2 · Hillslope creep (diffusion)</h2>
+      <p>
+        Soil creep is modeled as downslope sediment transport. The
+        <b>linear</b> law makes flux proportional to gradient, giving the classic
+        diffusion equation and convex-up hilltops:
+      </p>
+      <p class="eq"><code>q = −D ∇z</code> &nbsp;⟹&nbsp; <code>∂z/∂t = D ∇²z</code></p>
+      <p>
+        The <b>nonlinear</b> (Roering) law adds a critical slope <code>S<sub>c</sub></code>:
+        flux diverges as gradient approaches <code>S<sub>c</sub></code>, producing
+        planar threshold hillslopes and a natural hand-off to landsliding.
+      </p>
+      <p class="eq"><code>q = −D ∇z / (1 − (|∇z| / S<sub>c</sub>)²)</code></p>
+      <p>
+        Solved explicitly with a finite-volume flux divergence; the timestep is
+        auto-subdivided to satisfy the diffusion stability limit
+        (<code>D·Δt/Δx² ≲ 0.2</code>).
+      </p>
+      <ul class="refs">
+        <li>Culling (1960), <i>Analytical theory of erosion</i>, J. Geology —
+          <a href="https://doi.org/10.1086/626606">doi:10.1086/626606</a></li>
+        <li>Fernandes &amp; Dietrich (1997), <i>Hillslope evolution by diffusive processes</i>, WRR —
+          <a href="https://doi.org/10.1029/97WR00534">doi:10.1029/97WR00534</a></li>
+        <li>Roering, Kirchner &amp; Dietrich (1999), <i>Nonlinear, diffusive sediment transport</i>, WRR —
+          <a href="https://doi.org/10.1029/1998WR900090">doi:10.1029/1998WR900090</a></li>
+        <li>Roering et al. (2001), <i>Hillslope evolution by nonlinear creep and landsliding</i>, Geology —
+          <a href="https://www.sfu.ca/~jvenditt/geog213/readings/Roering_2001Geology_hillslope_evolution.pdf">PDF</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3 · Flow routing &amp; drainage area</h2>
+      <p>
+        Fluvial incision needs <b>drainage area</b> (how much landscape drains
+        through each cell), which requires routing flow downhill. The pipeline:
+      </p>
+      <ol>
+        <li><b>Depression filling</b> — priority-flood (+ε) raises pits so every
+          cell has a descending path to a boundary outlet.</li>
+        <li><b>D8 receivers</b> — 8-neighbour steepest descent on the filled
+          surface, used for the bed-elevation update and sediment routing.</li>
+        <li><b>Topological stack</b> — order cells so receivers precede donors
+          (Braun &amp; Willett's stack), enabling single-pass traversal.</li>
+        <li><b>Drainage area, multiple-flow-direction (MFD)</b> — each cell shares
+          its area among <i>all</i> lower neighbours, weighted by slope<sup>P</sup>
+          (Holmgren). Single-flow routing forces all flow into one of 8 directions,
+          which on smooth/planar surfaces locks it into parallel grid-aligned
+          stripes that never merge; MFD lets flow spread and reconverge, giving
+          realistic accumulation. The <b>Flow spread</b> control sets P (1 = widest
+          spread, large = steepest-descent-like).</li>
+      </ol>
+      <p>
+        The <b>Flow accumulation</b> shading mode paints this drainage-area field
+        directly (channels in blue, intensity by log area) over a hillshade base,
+        so the network is explicit rather than inferred from relief.
+      </p>
+      <p>
+        <b>Edge base level:</b> every perimeter cell is forced to sit 1 m below
+        its inward neighbour each step, so the domain edge is always a clean
+        outlet (no spurious edge basins) and base level tracks the evolving
+        interior.
+      </p>
+      <ul class="refs">
+        <li>O'Callaghan &amp; Mark (1984), <i>Extraction of drainage networks (D8)</i> —
+          <a href="https://doi.org/10.1016/S0734-189X(84)80011-0">doi:10.1016/S0734-189X(84)80011-0</a></li>
+        <li>Barnes, Lehman &amp; Mulla (2014), <i>Priority-flood depression filling</i>, Computers &amp; Geosciences —
+          <a href="https://doi.org/10.1016/j.cageo.2013.04.024">doi:10.1016/j.cageo.2013.04.024</a></li>
+        <li>Jain et al. (2024), <i>FastFlow: GPU flow &amp; depression routing</i>, Computer Graphics Forum —
+          <a href="https://doi.org/10.1111/cgf.15243">doi:10.1111/cgf.15243</a> (planned GPU upgrade path)</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4 · Fluvial incision (stream power)</h2>
+      <p>
+        River incision into bedrock follows the <b>stream-power law</b>: erosion
+        rate scales with drainage area <code>A</code> (a proxy for discharge) and
+        channel slope <code>S</code>.
+      </p>
+      <p class="eq"><code>∂z/∂t = U − K · A<sup>m</sup> · S<sup>n</sup></code></p>
+      <p>
+        It is integrated with the <b>Braun &amp; Willett (2013)</b> implicit scheme:
+        marching down the topological stack, each node is updated against its
+        already-updated receiver. For <code>n = 1</code> this is a closed form;
+        for <code>n ≠ 1</code> the sandbox uses per-node Newton–Raphson. The
+        scheme is O(n) and <i>unconditionally stable</i>, so one pass handles the
+        whole timestep. As incision balances uplift, relief approaches a steady
+        limit — the 2D analogue of the relief limit in the 1D sandbox.
+      </p>
+      <p>
+        <b>Sediment transport &amp; deposition — implicit (Yuan et al. 2019):</b>
+        erosion and deposition are solved together in one implicit framework,
+        <code>∂h/∂t = U − K·A<sup>m</sup>·S<sup>n</sup> + (G/A)·Q<sub>s</sub></code>,
+        where Q<sub>s</sub> is the downstream sediment flux. Each timestep makes one
+        pass to route the flow, then a few <b>Gauss-Seidel</b> iterations down the
+        flow stack: accumulate Q<sub>s</sub>, then update every cell implicitly
+        against its receiver plus the deposition source <code>G·Q<sub>s</sub>/A</code>
+        (under-relaxed to tame the deposition feedback). The deposition term turns
+        the net rate depositional as gradient falls — filling valleys and closed
+        basins — while staying <b>unconditionally stable at large timesteps with no
+        sub-stepping</b>. Iterations scale with the deposition coefficient
+        <b>G</b>: G=0 is a single pass (identical to plain implicit stream power,
+        Braun &amp; Willett 2013); G≈1 is ~20 cheap passes — far less work than
+        re-routing every sub-step. The budget is mass-conserving (eroded =
+        deposited + exported), and at equilibrium boundary export balances uplift.
+        The <b>Δelevation</b> and <b>Sediment flux</b> panels visualize this budget
+        directly. This is the method behind <a href="https://fastscape.org/">fastscapelib</a>.
+      </p>
+      <ul class="refs">
+        <li>Howard &amp; Kerby (1983), <i>Channel changes in badlands</i>, GSA Bulletin (origin of the stream-power form).</li>
+        <li>Whipple &amp; Tucker (1999), <i>Dynamics of the stream-power incision model</i>, JGR —
+          <a href="https://doi.org/10.1029/1999JB900120">doi:10.1029/1999JB900120</a></li>
+        <li>Braun &amp; Willett (2013), <i>A very efficient O(n), implicit and parallel method…</i>, Geomorphology —
+          <a href="https://doi.org/10.1016/j.geomorph.2012.10.008">doi:10.1016/j.geomorph.2012.10.008</a></li>
+        <li>Yuan et al. (2019), <i>A New Efficient Method to Solve the Stream Power Law Model Taking Into Account Sediment Deposition</i>, JGR-ES —
+          <a href="https://doi.org/10.1029/2018JF004867">doi:10.1029/2018JF004867</a> (implicit erosion-deposition; the current solver)</li>
+        <li>Lague (2014), <i>The stream power river incision model: evidence, theory and beyond</i>, ESPL —
+          <a href="https://doi.org/10.1002/esp.3462">doi:10.1002/esp.3462</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>5 · Glaciers — ice flow, mass balance &amp; avalanching</h2>
+      <p>
+        A glacier-ice layer <code>H</code> sits on the bedrock <code>z</code>; the ice
+        surface is <code>s = z + H</code>. Climate is set by a <b>firn line /
+        equilibrium-line altitude (ELA)</b>: the annual mass balance is
+        <span class="eq"><code>ḃ = clamp((s − ELA)·β, −ablation, +accumulation)</code></span>
+        — snow accumulates where the ice surface is above the firn line, ice melts
+        below it (β is the mass-balance gradient). The <b>ablation</b> gradient below
+        the ELA is steeper than the accumulation gradient (≈2.5×, a standard
+        glaciological asymmetry); a symmetric gradient melts too weakly and tongues
+        stretch unrealistically far below the snowline. The balance is referenced to
+        the ice <b>surface</b>, the physical firn line. This carries a genuine
+        surface-elevation feedback — thicker ice raises a colder surface and gains
+        more accumulation — and the resulting <i>small-ice-cap bistability</i> (the
+        ice can sit in a thin or a self-sustaining state); these are real behaviours
+        of the modelled system, not numerical artifacts.
+      </p>
+      <p>
+        At ice margins the face flux uses an <b>upwind</b> rule: ice can only be
+        transported out of a cell that actually holds ice. A centered face thickness
+        would let an ice-free cell whose <i>bedrock</i> stands above a neighbour's ice
+        <i>surface</i> spuriously source ice into it (the non-negativity clamp then
+        manufactures the mass) — which otherwise stranded phantom patches of ice far
+        below the ELA during deglaciation.
+      </p>
+      <p>
+        Ice flow uses the <b>Shallow-Ice Approximation (SIA)</b>. The
+        depth-integrated flux is driven by the surface slope,
+        <span class="eq"><code>q = −D ∇s,&nbsp;&nbsp; D = Γ·H<sup>n+2</sup>·|∇s|<sup>n−1</sup>,&nbsp;&nbsp; Γ = 2A/(n+2)·(ρg)<sup>n</sup>,&nbsp; n = 3</code></span>
+        and thickness evolves by mass conservation
+        <code>∂H/∂t = ḃ − ∇·q</code>. <code>A</code> is the temperate-ice Glen
+        flow-law coefficient (scaled by an adjustable <b>flow factor</b> standing in
+        for ice temperature / sliding). It is integrated in <b>conservative
+        finite-volume form</b> (fluxes on cell faces, with <code>D = 0</code> on
+        ice-free faces) so mass is conserved exactly and thickness stays
+        non-negative. At the domain edges the bed is treated as dropping steeply
+        just outside, so ice <b>spills over the rim and leaves the domain</b> — an
+        outlet that gives a bounded equilibrium even when accumulation exceeds the
+        domain's ablation capacity (a closed, no-flux boundary instead lets ice fill
+        the whole grid without limit). The external drop is kept moderate so the
+        edge drains steadily rather than emptying in one step.
+      </p>
+      <p>
+        <b>Coarse ice grid.</b> The ice runs on a grid 4× coarser than the bedrock
+        (100×100 vs 400×400). Ice is smooth, so sub-grid bed detail is irrelevant;
+        and since the diffusivity cap scales as <code>dx²</code>, the coarser grid
+        gives genuine flow speeds (tens–hundreds of m/yr, not throttled) and ~16×
+        fewer cells, making the stiff equilibration cheap. Each step the bed is
+        block-averaged down to the ice grid; ice thickness, speed and erosion are
+        bilinearly interpolated back up to carve the fine bedrock and for display.
+      </p>
+      <p>
+        SIA diffusion is <b>stiff</b> (<code>D ∝ H⁵</code>), so the flux step is
+        sub-cycled on its CFL limit <code>dt ≤ 0.2·dx²/D<sub>max</sub></code> (with
+        <code>D</code> capped at a fixed <code>0.2·dx²/dt<sub>sub,min</sub></code>).
+        A semi-implicit ADI solver was prototyped, but because the bed-slope-driven
+        flux is advective it was only stable to <code>dt ≈ 2&nbsp;yr</code> — no gain.
+      </p>
+      <p>
+        <b>Equilibrium tracking.</b> Because the landscape evolves over millions of
+        years while ice adjusts in 10²–10³ yr, the ice is effectively always at
+        steady state with the current bed. So rather than advancing ice a fixed time
+        each frame, we iterate the flux + mass balance to <b>equilibrium</b> — until
+        the total ice volume stops changing (a windowed test, robust to the
+        terminus limit-cycle a pointwise test trips on). The first spin-up costs
+        ~10²–10³ sub-steps; afterwards the bed barely moves between frames, so the
+        ice is already near equilibrium and re-converges in ~10² (a per-frame budget
+        caps the cost and spreads large changes, e.g. an ELA shift, over a few
+        frames). A safety thickness cap bounds the unbounded-growth case where
+        accumulation exceeds the ablation capacity of the domain (no steady state
+        exists). Avalanching is folded into the iteration so peaks stay bare at
+        equilibrium.
+      </p>
+      <p>
+        <b>Avalanching</b> (snow/ice sliding off steep terrain, modelled as
+        debris-limited talus on the ice surface) is currently set aside — the SIA
+        flux already sheds most ice from steep slopes (<code>D ∝ |∇s|²</code>). It
+        may return if bare-peak exposure proves important. The diagnostic panels
+        show ice thickness and depth-averaged ice speed (<code>|q|/H</code>).
+      </p>
+      <p>
+        <b>Glacial erosion</b> follows the standard landscape-evolution recipe
+        (MacGregor et al. 2000; Egholm et al. 2009; Herman et al. 2015): abrasion
+        proportional to basal sliding, with sliding driven by basal shear stress
+        (Hallet 1979). Taking the erosion exponent <code>l = 1</code> (Humphrey &amp;
+        Raymond 1994; Cook et al. 2020):
+        <span class="eq"><code>ΔE = K_g·τ_b·dt,&nbsp;&nbsp; τ_b = ρg·H·min(|∇s|, s<sub>c</sub>)</code></span>
+        with <code>K_g</code> a glacial erodibility and <code>dt</code> the full
+        geomorphic time-step (carving accumulates over geological time though the ice
+        is quasi-static). The crucial detail is that <code>τ_b</code> is built from the
+        ice-<b>surface</b> slope <code>∇s</code>: as a trough over-deepens, the ice
+        fills it and the surface <b>flattens</b>, so driving stress falls and erosion
+        shuts off — the overdeepening <b>self-limits to roughly the ice thickness</b>
+        rather than digging without bound (Hergarten 2021; Deal &amp; Prasicek 2021).
+        The slope is <b>Coulomb-regularized</b> (saturates at <code>s<sub>c</sub> ≈
+        0.25</code> — basal drag cannot exceed a Coulomb yield; Schoof 2005), so a
+        steep wall cannot make <code>τ_b</code> explode, and a realistic per-step
+        ceiling (≲ cm/yr) keeps the bed from out-running the ice's ability to
+        re-flatten its surface. The combination is bounded and stable even at high
+        <code>K_g</code>. Because erosion strengthens with ice thickness, it
+        concentrates under the thick trunk and carves steep-sided <b>U-troughs</b>
+        (with thin-ice walls preserved). Eroded debris is handed to the fluvial
+        system as outwash (next paragraph). Subglacial-hydrology controls on
+        overdeepenings (effective pressure, reverse-slope shutdown) are a refinement.
+      </p>
+      <p>
+        <b>Fluvial–glacial coupling.</b> Above the firn line precipitation falls as
+        snow (it feeds the ice rather than running off), so <b>rainfall = 0 above the
+        ELA</b>: those cells seed no drainage area, hence no discharge and no river
+        incision in the accumulation zone — fluvial channels begin at the snowline.
+        Bedrock under ice is likewise exempt from subaerial incision.
+      </p>
+      <p>
+        <b>Lakes.</b> Flow routing is done on the <b>surface</b> (bed + ice), not the
+        bare bedrock, so a glacier is a real barrier: rivers route around it or
+        <b>pond against it</b> rather than passing through. The priority-flood that
+        fills depressions to their outlet is exactly the maximum ponded-water level,
+        so lakes emerge for free as the fill depth (<code>filled − surface</code>) —
+        both <b>ice-dammed / proglacial lakes</b> behind a tongue and ordinary
+        <b>bedrock lakes</b> in closed basins. Lakes are below base level for stream
+        power, so they trap sediment and gradually <b>silt in</b>.
+      </p>
+      <p>
+        <b>Meltwater &amp; outwash.</b> In the ablation zone the ice wastes, releasing
+        both <b>meltwater</b> and the <b>glacially-ground sediment</b> it carries —
+        each proportional to the local melt rate (the glacier delivers its water and
+        load to where it melts). The meltwater is added to the drainage discharge, so
+        proglacial streams run from the snout; the sediment is injected into the
+        fluvial sediment flux, and the existing deposition machinery spreads it
+        downstream as an <b>outwash plain</b> that tapers with distance. This reuses
+        the fluvial transport solver, so it adds almost no cost. The hand-off is
+        mass-conserving (glacially eroded volume = injected = deposited downstream +
+        exported), with a one-step lag (the glacier feeds the next step's rivers).
+      </p>
+      <ul class="refs">
+        <li>Cuffey &amp; Paterson (2010), <i>The Physics of Glaciers</i>, 4th ed. — SIA, Glen flow law.</li>
+        <li>Hutter (1983), <i>Theoretical Glaciology</i> — shallow-ice approximation.</li>
+        <li>Bueler et al. (2005), <i>Exact solutions and verification of numerical models for isothermal ice sheets</i>, J. Glaciology — SIA numerics/verification.</li>
+        <li>Bernhardt &amp; Schulz (2010), <i>SnowSlide</i>, Geophys. Res. Lett. — gravitational snow redistribution (avalanching).</li>
+        <li>Harbor (1992), GSA Bulletin; MacGregor et al. (2000), Geology — glacial U-valley longitudinal-profile model (E ∝ sliding velocity).</li>
+        <li>Hallet (1979), J. Glaciology — theory of glacial abrasion (E ∝ sliding).</li>
+        <li>Egholm et al. (2009), <i>Nature</i> 460 — glacial buzzsaw; <code>E = k_e·U_s</code>, sliding law, SOSIA.</li>
+        <li>Herman et al. (2015), <i>Science</i> 350; Cook et al. (2020), <i>Nat. Commun.</i> — empirical erosion-vs-sliding exponent (l ≈ 0.65–2).</li>
+        <li>Hergarten (2021) / Deal &amp; Prasicek (2021), GRL — overdeepening depth self-limited by ice-surface flattening.</li>
+        <li>Schoof (2005), Proc. R. Soc. A — Coulomb-regularized basal sliding (drag saturates).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6 · Deep-seated landslides (SCOOPS3D-style)</h2>
+      <p>
+        Failure surfaces are trial <b>spherical scoops</b> evaluated with a 3D
+        <b>method of columns</b> limit-equilibrium (Ordinary/Fellenius): each
+        column contributes resisting <code>c·A + (W·cosα − u·A)·tanφ</code> and
+        driving <code>W·sinα</code>. The driving is summed as a <b>vector</b> along
+        the net slide direction, so a symmetric scoop on flat ground (whose radial
+        driving forces cancel) is correctly stable — only an oversteepened,
+        asymmetric mass drives a net downslope failure. The factor of safety is
+        resisting ÷ net driving.
+        Rather than an exhaustive search, testing is <b>stochastic</b>: each step
+        throws a number of random trial scoops — the random draw stands in for a
+        <i>pre-existing weakness</i>, and the FoS check for whether the
+        <i>geometry supports failure</i>. A scoop with FoS below the threshold
+        fails. Controls: cohesion <code>c</code>, friction <code>φ</code>,
+        pore-pressure ratio <code>r<sub>u</sub></code>, unit weight, max radius,
+        a <b>slope strength</b> factor (higher = fewer failures; 1.0 = the physical
+        FoS&lt;1 criterion), and tests/step.
+      </p>
+      <p>
+        Both failure modes share one mechanic: define the slip surface, displace
+        the block downslope along it (a rotation), then resolve over-steepened
+        parts with a <b>growing angle-of-repose relaxation</b> whose region expands
+        to wherever debris lands (so the runout feathers out with no clipped
+        margin). Material can never carve below the pre-failure surface (a per-cell
+        floor), so only the debris flows. All mass-conserving.
+      </p>
+      <p>
+        <b>Catastrophic</b> uses a large displacement — the block leaves the scar
+        and runs out as a repose-angle lobe. <b>Slow</b> uses a small displacement
+        and the failure becomes a <i>persistent rotational slump</i>: it is stored
+        and re-checked every step — it rides uplift, creeps a little whenever its
+        factor of safety is below threshold, stabilizes as material evacuates (FoS
+        rises), reactivates if later undercut, and is retired once eroded away.
+        <b>Vanish</b> exports the failed mass instead. The two modes carry separate
+        angles of repose (catastrophic debris spreads to a low AOR and runs far; slow
+        slumps keep a steeper AOR and stay compact).
+      </p>
+      <p>
+        <b>Ice loading (buttressing).</b> Where glaciers overlie the trial surface,
+        each column carries an <b>ice surcharge</b> <code>γ_ice·H_ice·A</code> added
+        to its weight (<code>γ_ice ≈ 9 kN/m³</code>, ~0.45× rock). The surcharge adds
+        to both the driving (<code>W·sinα</code>) and the frictional resistance
+        (<code>W·cosα·tanφ</code>); because the driving is resolved as a vector that
+        largely cancels over a rotational surface while the resistance adds in full,
+        loading a scoop is net <b>stabilizing</b>. So valley/cirque ice buttresses the
+        rock beneath and around it, and <b>deglaciation lowers the factor of safety</b>
+        (paraglacial debuttressing → failures after the ice leaves). The effect is
+        <i>limited</i> by ice's low density — less than half what an equal volume of
+        rock would provide. (This is a surcharge model; true passive support from ice
+        standing in <i>front</i> of a wall is not yet included.)
+      </p>
+      <ul class="refs">
+        <li>Reid, Christian, Brien &amp; Henderson (2015), <i>Scoops3D</i>, USGS Techniques &amp; Methods 14–A1 —
+          <a href="https://pubs.usgs.gov/tm/14/a01/">pubs.usgs.gov/tm/14/a01</a></li>
+        <li>Hungr (1987), <i>An extension of Bishop's simplified method to three dimensions</i>, Géotechnique —
+          <a href="https://doi.org/10.1680/geot.1987.37.1.113">doi:10.1680/geot.1987.37.1.113</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Reference implementations &amp; tooling</h2>
+      <ul class="refs">
+        <li><b>Landlab</b> — Python landscape-modeling toolkit (process components, validation reference) —
+          <a href="https://landlab.csdms.io/">landlab.csdms.io</a>,
+          <a href="https://doi.org/10.5194/esurf-5-21-2017">Hobley et al. 2017</a></li>
+        <li><b>Fastscapelib</b> — C++/Python library implementing the Braun–Willett solver —
+          <a href="https://fastscapelib.readthedocs.io/">fastscapelib.readthedocs.io</a></li>
+        <li><b>Badlands</b> — basin &amp; landscape dynamics model —
+          <a href="https://doi.org/10.21105/joss.00603">Salles 2018 (JOSS)</a></li>
+        <li>GPU erosion harnesses (hydraulic, not LEM — borrowed only for WebGPU plumbing &amp; DEM I/O):
+          <a href="https://github.com/joshbrew/webgpu_hydraulic_thermal_erosion_Jako2011">Jako-2011 WebGPU</a>,
+          <a href="https://github.com/GPU-Gang/WebGPU-Erosion-Simulation">WebGPU-Erosion</a>,
+          <a href="https://github.com/LanLou123/Webgl-Erosion">Webgl-Erosion</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    Companion to the <a href="index.html">2D Terrain Evolution Sandbox</a>.
+    Equations and schemes are simplified for interactivity; consult the linked
+    sources for the full formulations.
+  </footer>
+</body>
+</html>

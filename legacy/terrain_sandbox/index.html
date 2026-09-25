@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2D Terrain Evolution Sandbox</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>2D Terrain Evolution Sandbox <a class="navlink" href="methods.html">Methods &amp; references →</a></h1>
+    <p>
+      A gridded landscape-evolution sandbox (parallel to the 1D uplift model).
+      Seeded initial topography + hillslope <b>creep</b> (linear diffusion or the
+      nonlinear Roering law) + <b>fluvial incision</b> (stream power with D8 flow
+      routing) + uplift. Glacial and deep-failure processes come next. Compute is
+      float32; the map is a hillshade over a hypsometric colormap. See the
+      <a href="methods.html">methods page</a> for equations and references.
+    </p>
+  </header>
+
+  <div class="layout">
+    <div class="map-col">
+      <div class="map-wrap">
+        <canvas id="map"></canvas>
+        <canvas id="mapOverlay"></canvas>
+      </div>
+      <div id="readout"></div>
+      <div class="controls viewbar">
+        <fieldset>
+          <legend>View</legend>
+          <div class="viewrow">
+            <label>Shading
+              <select id="shading">
+                <option value="shaded">Shaded color</option>
+                <option value="hillshade">Hillshade (grey)</option>
+                <option value="color">Color only</option>
+                <option value="flow">Flow accumulation</option>
+              </select>
+            </label>
+            <label>Vertical exaggeration <span class="val" id="vertExag-val"></span>
+              <input type="range" id="vertExag" min="0.5" max="6" step="0.5" value="1" />
+            </label>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="showIce" checked /> Show ice (off = bare substrate)
+          </label>
+        </fieldset>
+      </div>
+      <div class="diag-panels">
+        <div class="diag">
+          <div class="diag-title">Δelevation <span class="diag-key">(10-step avg; blue = deposition, red = erosion)</span></div>
+          <canvas id="dzMap"></canvas>
+        </div>
+        <div class="diag">
+          <div class="diag-title">Sediment flux <span class="diag-key">(log volume; white→purple)</span></div>
+          <canvas id="sedMap"></canvas>
+        </div>
+      </div>
+      <div class="diag-panels">
+        <div class="diag">
+          <div class="diag-title">Ice thickness <span class="diag-key">(white→blue)</span></div>
+          <canvas id="iceMap"></canvas>
+        </div>
+        <div class="diag">
+          <div class="diag-title">Ice speed <span class="diag-key">(SIA flow; white→blue, m/yr)</span></div>
+          <canvas id="iceVelMap"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="buttons">
+        <button id="playPause">▶ Play</button>
+        <button id="stepBtn">Step</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div class="controls">
+        <fieldset>
+          <legend>Initial topography</legend>
+          <label>Type
+            <select id="topo">
+              <option value="hills">Fractal hills</option>
+              <option value="cones" selected>Scattered cones</option>
+              <option value="plane">Tilted plane</option>
+            </select>
+          </label>
+          <label>Seed <span class="val" id="seed-val"></span>
+            <input type="number" id="seed" min="1" max="999999" step="1" placeholder="blank = clock" />
+          </label>
+          <label>Feature height <span class="val" id="relief-val"></span>
+            <input type="range" id="relief" min="100" max="2000" step="50" value="1500" />
+          </label>
+          <label>Noise <span class="val" id="noise-val"></span>
+            <input type="range" id="noise" min="0" max="100" step="2" value="4" />
+          </label>
+          <button id="regen">Regenerate terrain</button>
+        </fieldset>
+
+        <fieldset>
+          <legend>Creep (hillslope diffusion)</legend>
+          <label>Diffusivity D <span class="val" id="Dexp-val"></span>
+            <input type="range" id="Dexp" min="-3" max="0.7" step="0.05" value="-1.7" />
+          </label>
+          <label class="check">
+            <input type="checkbox" id="nonlinear" /> Nonlinear (Roering)
+          </label>
+          <label>Critical slope S<sub>c</sub> <span class="val" id="Sc-val"></span>
+            <input type="range" id="Sc" min="0.3" max="1.2" step="0.05" value="0.6" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Fluvial incision (stream power)</legend>
+          <label class="check">
+            <input type="checkbox" id="fluvial" checked /> Enable fluvial incision
+          </label>
+          <label>Erodibility K <span class="val" id="Kexp-val"></span>
+            <input type="range" id="Kexp" min="-7" max="-3" step="0.1" value="-5" />
+          </label>
+          <label>Area exponent m <span class="val" id="m-val"></span>
+            <input type="range" id="m" min="0.3" max="0.7" step="0.05" value="0.5" />
+          </label>
+          <label>Slope exponent n <span class="val" id="nexp-val"></span>
+            <input type="range" id="nexp" min="1" max="2" step="0.1" value="1" />
+          </label>
+          <label>Deposition G <span class="val" id="depo-val"></span>
+            <input type="range" id="depo" min="0" max="1" step="0.05" value="0.5" />
+          </label>
+          <label>Flow spread (MFD) <span class="val" id="mfd-val"></span>
+            <input type="range" id="mfd" min="1" max="8" step="1" value="4" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Landslides (Scoops)</legend>
+          <label class="check">
+            <input type="checkbox" id="landslides" checked /> Enable landslides
+          </label>
+          <label>Mode
+            <select id="lsMode">
+              <option value="catastrophic">Catastrophic (talus runout)</option>
+              <option value="slow">Slow (persistent slump)</option>
+              <option value="vanish">Vanish (export)</option>
+            </select>
+          </label>
+          <label>Slope strength <span class="val" id="lsStrength-val"></span>
+            <input type="range" id="lsStrength" min="0.3" max="2.5" step="0.05" value="1" />
+          </label>
+          <label>Tests / step <span class="val" id="lsTestsExp-val"></span>
+            <input type="range" id="lsTestsExp" min="0" max="3" step="0.05" value="0.7" />
+          </label>
+          <label>Cohesion c <span class="val" id="lsC-val"></span>
+            <input type="range" id="lsC" min="0" max="50" step="1" value="10" />
+          </label>
+          <label>Friction φ <span class="val" id="lsPhi-val"></span>
+            <input type="range" id="lsPhi" min="15" max="45" step="1" value="32" />
+          </label>
+          <label>Pore pressure r<sub>u</sub> <span class="val" id="lsRu-val"></span>
+            <input type="range" id="lsRu" min="0" max="0.6" step="0.05" value="0.2" />
+          </label>
+          <label>Max scoop radius <span class="val" id="lsRmaxExp-val"></span>
+            <input type="range" id="lsRmaxExp" min="2.3" max="4" step="0.02" value="3.6" />
+          </label>
+          <label>Catastrophic AOR <span class="val" id="lsRepose-val"></span>
+            <input type="range" id="lsRepose" min="2" max="40" step="1" value="14" />
+          </label>
+          <label>Slow slump AOR <span class="val" id="lsReposeSlow-val"></span>
+            <input type="range" id="lsReposeSlow" min="2" max="45" step="1" value="35" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Glaciers (SIA)</legend>
+          <label class="check">
+            <input type="checkbox" id="glaciers" checked /> Enable glaciers
+          </label>
+          <label>Firn line / ELA <span class="val" id="ela-val"></span>
+            <input type="range" id="ela" min="0" max="3000" step="50" value="1000" />
+          </label>
+          <label>Mass-balance gradient <span class="val" id="balGrad-val"></span>
+            <input type="range" id="balGrad" min="0.001" max="0.02" step="0.001" value="0.007" />
+          </label>
+          <label>Ice flow factor <span class="val" id="iceFlowExp-val"></span>
+            <input type="range" id="iceFlowExp" min="-1" max="1.5" step="0.1" value="0" />
+          </label>
+          <label>Glacial erodibility <span class="val" id="iceErodeExp-val"></span>
+            <input type="range" id="iceErodeExp" min="-10" max="-6.5" step="0.1" value="-8" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Forcing &amp; time</legend>
+          <label>Uplift pattern
+            <select id="upliftPattern">
+              <option value="ramp">Edge ramp → flat interior</option>
+              <option value="gaussian" selected>Gaussian (centred dome)</option>
+              <option value="tilt">Tilting plane</option>
+            </select>
+          </label>
+          <label>Uplift <span class="val" id="upliftExp-val"></span>
+            <input type="range" id="upliftExp" min="-2" max="1" step="0.05" value="0.3" />
+          </label>
+          <label>Uplift edge ramp <span class="val" id="upliftRamp-val"></span>
+            <input type="range" id="upliftRamp" min="0" max="150" step="5" value="50" />
+          </label>
+          <label>Time step <span class="val" id="dtExp-val"></span>
+            <input type="range" id="dtExp" min="1" max="4.7" step="0.05" value="3" />
+          </label>
+        </fieldset>
+
+      </div>
+
+      <div id="xsections"></div>
+
+      <div class="timeline-wrap">
+        <div class="xsection-title">History
+          <span class="diag-key" id="timeline-legend"></span>
+        </div>
+        <svg id="timeline"></svg>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Core model in <code>terrain-model.js</code> (no DOM); rendering in
+    <code>render.js</code>; UI in <code>app.js</code>. See <code>DESIGN.md</code>
+    for the full process plan and roadmap.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="terrain-model.js"></script>
+  <script src="render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
