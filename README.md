@@ -21,6 +21,7 @@ Every numerical scheme is mirrored and checked in Python before and after portin
     /opt/anaconda3/bin/python3 py/test_core.py
     /opt/anaconda3/bin/python3 py/test_d1_columns.py
     /opt/anaconda3/bin/python3 py/test_d2_along.py
+    /opt/anaconda3/bin/python3 py/test_d1_node.py
 
 ## Layout
 

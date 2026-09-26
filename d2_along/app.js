@@ -20,7 +20,8 @@
   var m = {
     L: M("Valley length L", ["s ∈ [0, L], node spacing ds = L/(N − 1)"], "s = 0 is the divide (valley head), s = L the outlet at fixed base level z = 0.", null, "asserted"),
     N: M("Nodes N", ["ds = L / (N − 1)"], "Resolution of the profile. 301 nodes on 30 km is 100 m.", null, "asserted"),
-    initProfile: M("Initial profile", ["linear: z = z<sub>head</sub>(1 − s/L)", "concave: z = z<sub>head</sub>(1 − s/L)<sup>1.5</sup>"], "Starting long profile; noise adds seeded Gaussian roughness.", null, "asserted"),
+    initProfile: M("Initial profile", ["steady: S = (U<sub>peak</sub> f / K A<sup>m</sup>)<sup>1/n</sup> integrated up from the outlet", "linear: z = z<sub>head</sub>(1 − s/L)", "concave: z = z<sub>head</sub>(1 − s/L)<sup>1.5</sup>"],
+      "The fluvial steady state (default) starts the river in equilibrium with the peak uplift, so anything that then happens is the glacier's doing. The other two are far from equilibrium and incise fast at first. Noise adds seeded Gaussian roughness. Head elevation applies to linear and concave only.", null, "asserted"),
     zHead: M("Head elevation", ["z(0, 0) = z<sub>head</sub>"], null, null, "asserted"),
     noise: M("Profile noise σ", ["z += σ·𝒩(0,1) (seeded)"], null, null, "asserted"),
     shape: M("Uplift forcing U(t)", ["U(t) = U<sub>peak</sub> s(t)"], "Event shapes on [0, T]: bell, plateau, pulse, arc, triangle, square. The outlet does not uplift (fixed base level).", "core/forcing.js", "asserted"),
@@ -64,7 +65,13 @@
     pProfile: M("Long profile", ["bed z(s), ice surface z + H, ELA(t)"], "Brown: bedrock. Blue fill: ice (steady discharge). Dashed: ELA. Thick brown overlay: surface within the resistant body. The outlet is fixed base level.", null, "computed"),
     pRates: M("Erosion rates", ["E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup> (ice-free);  E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup> (+ quarrying) under ice;  U(s, t) dashed"], null, null, "computed"),
     pIce: M("Ice: sliding speed and thickness", ["U<sub>s</sub> = f<sub>s</sub> q/H (m/yr);  H (m, right axis not drawn — see profile)"], "Sliding speed drives erosion. Where H = 0 there is no ice.", null, "computed"),
-    pHist: M("History", ["relief = max z − min z;  ice volume = Σ H W ds"], "Time series of the run. Mass closure (uplift − erosion − Δvolume) is in the readout.", null, "computed")
+    pHist: M("History", ["relief = max z − min z;  ice volume = Σ H W ds"], "Time series of the run. Mass closure (uplift − erosion − Δvolume) is in the readout.", null, "computed"),
+    pLink: M("Isolated column at the selected node  (d1 ↔ d2 link)", [
+        "frozen at the click: z<sub>down</sub>, H<sub>down</sub>, Q, A, W, W<sub>f</sub>, ds",
+        "running: U(t)·f(s), lithology r(z − U<sub>cum</sub>), slope against z<sub>down</sub>, H from the face law against z<sub>down</sub> + H<sub>down</sub>",
+        "divergence = z<sub>2D</sub>(t) − z<sub>1D</sub>(t)"],
+      "Click the long profile to pick a node. Solid: the node's real elevation as the profile runs. Dashed: the same node run as an isolated d1 column with the same laws, where everything that came from its neighbours is held at the click-time value and badged asserted. The two curves start together; how far and how fast they part is the answer to “how much behaviour arises from the extra dimension”. Note the ELA acts on a node only through the ice flux, which is adjacency — so the isolated column is blind to glacial cycles. “Open in d1” shows this column standalone with its constants as sliders.",
+      "py/test_d1_node.py: the column reproduces the 2D node exactly when its adjacency is refreshed every step.", "computed")
   };
 
   // ---- Controls (display units) ------------------------------------------
@@ -72,14 +79,14 @@
   var specs = [
     { id: "L", label: "Valley length", type: "range", min: 10, max: 60, step: 5, val: 30, unit: "km", group: "Domain", asserted: true, method: m.L },
     { id: "N", label: "Nodes", type: "select", val: "301", options: [{ v: "151", t: "151" }, { v: "301", t: "301" }, { v: "601", t: "601" }], group: "Domain", asserted: true, method: m.N },
-    { id: "initProfile", label: "Initial profile", type: "select", val: "concave", options: [{ v: "concave", t: "Concave" }, { v: "linear", t: "Linear" }], group: "Domain", asserted: true, method: m.initProfile },
+    { id: "initProfile", label: "Initial profile", type: "select", val: "steady", options: [{ v: "steady", t: "Fluvial steady state (for U, K)" }, { v: "concave", t: "Concave (1 − s/L)^1.5" }, { v: "linear", t: "Linear" }], group: "Domain", asserted: true, method: m.initProfile },
     { id: "zHead", label: "Head elevation", type: "range", min: 0.5, max: 5, step: 0.1, val: 2.5, unit: "km", group: "Domain", asserted: true, method: m.zHead },
     { id: "noise", label: "Profile noise", type: "range", min: 0, max: 50, step: 1, val: 0, unit: "m", group: "Domain", asserted: true, method: m.noise },
     { id: "shape", label: "Uplift shape", type: "select", val: "constant", options: SHAPES, group: "Forcing", method: m.shape },
     { id: "peakUplift", label: "Peak uplift", type: "range", min: 0, max: 10, step: 0.1, val: 1, unit: "mm/yr", group: "Forcing", method: m.peakUplift },
     { id: "duration", label: "Event duration", type: "range", min: 0.5, max: 40, step: 0.5, val: 10, unit: "Myr", group: "Forcing", method: m.duration },
     { id: "pattern", label: "Spatial pattern", type: "select", val: "uniform", options: [{ v: "uniform", t: "Uniform" }, { v: "ramp", t: "Ramp from ends" }, { v: "gaussian", t: "Gaussian mid-profile" }, { v: "tilt", t: "Tilt (rises to outlet)" }], group: "Forcing", asserted: true, method: m.pattern },
-    { id: "KExp", label: "Erodibility K", type: "range", min: -7, max: -4, step: 0.1, val: -4.7, log: true, group: "Fluvial", method: m.KExp },
+    { id: "KExp", label: "Erodibility K", type: "range", min: -7, max: -4, step: 0.1, val: -5.5, log: true, group: "Fluvial", method: m.KExp },
     { id: "m", label: "Area exponent m", type: "range", min: 0.3, max: 0.7, step: 0.05, val: 0.5, unit: "", group: "Fluvial", asserted: true, method: m.m },
     { id: "nexp", label: "Slope exponent n", type: "range", min: 1, max: 2, step: 0.25, val: 1, unit: "", group: "Fluvial", asserted: true, method: m.nexp },
     { id: "G", label: "Deposition G", type: "range", min: 0, max: 2, step: 0.1, val: 0, unit: "", group: "Fluvial", asserted: true, method: m.G },
@@ -87,7 +94,7 @@
     { id: "W0", label: "Valley width at head", type: "range", min: 50, max: 1000, step: 50, val: 300, unit: "m", group: "Valley geometry", asserted: true, method: m.W0 },
     { id: "kw", label: "Width growth", type: "range", min: 0, max: 0.2, step: 0.01, val: 0.05, unit: "m/m", group: "Valley geometry", asserted: true, method: m.kw },
     { id: "glacierOn", label: "Glacier on", type: "check", val: true, group: "Glacier", method: m.glacierOn },
-    { id: "elaBase", label: "ELA (interglacial)", type: "range", min: 0.2, max: 5, step: 0.1, val: 1.8, unit: "km", group: "Glacier", asserted: true, method: m.elaBase },
+    { id: "elaBase", label: "ELA (interglacial)", type: "range", min: 0.2, max: 5, step: 0.1, val: 1.5, unit: "km", group: "Glacier", asserted: true, method: m.elaBase },
     { id: "elaAmp", label: "ELA cycle amplitude", type: "range", min: 0, max: 1.5, step: 0.05, val: 0, unit: "km", group: "Glacier", asserted: true, method: m.elaAmp },
     { id: "elaPeriod", label: "ELA cycle period", type: "range", min: 20, max: 400, step: 10, val: 100, unit: "kyr", group: "Glacier", asserted: true, method: m.elaPeriod },
     { id: "balGrad", label: "Balance gradient", type: "range", min: 0.002, max: 0.015, step: 0.001, val: 0.007, unit: "/yr", group: "Glacier", asserted: true, method: m.balGrad },
@@ -111,11 +118,7 @@
   // ---- Model ---------------------------------------------------------------
   var model = null;
   function lithoSpec() {
-    var L = U.fromKm(state.L), top = U.fromKm(state.lithoTop), T = U.fromKm(state.lithoThick);
-    if (state.lithoType === "layer") return { type: "layer", top: top, thick: T, soft: 5 };
-    if (state.lithoType === "slab") return { type: "slab", top: top, thick: T, dipX: -state.lithoPos * 0.2, soft: 5 };
-    if (state.lithoType === "dike") return { type: "dike", x0: state.lithoPos * L, width: T, soft: 5 };
-    return null;
+    return GS.d2along.lithoFromControls(state.lithoType, U.fromKm(state.lithoTop), U.fromKm(state.lithoThick), state.lithoPos, U.fromKm(state.L));
   }
   function build() {
     model = GS.d2along.createModel({
@@ -127,6 +130,7 @@
       Kq: state.KqExp <= -6 ? 0 : Math.pow(10, state.KqExp), litho: lithoSpec(), contrastK: state.contrastK, contrastKg: state.contrastKg,
       dt: state.dt
     });
+    model.primeIce();
     model.record();
   }
 
@@ -137,7 +141,35 @@
   var pRates = P.make(charts, { title: "Erosion rates  vs  uplift", yLabel: "rate (mm/yr)", color: C.glac, method: m.pRates });
   var pIce = P.make(charts, { title: "Sliding speed", yLabel: "U_s (m/yr)", color: C.Us, showX: true, xLabel: "distance from divide s (km)", method: m.pIce });
   var pHist = P.make(charts, { title: "History", yLabel: "relief (km)", color: C.relief, showX: true, xLabel: "time (Myr)", method: m.pHist });
+  var pLink = P.make(charts, { title: "Isolated column — click the profile to pick a node", yLabel: "z (km)", color: C.Us, showX: true, xLabel: "time since click (kyr)", method: m.pLink });
   var sKm = function (d) { return U.toKm(d.s); };
+  var link = null; // { i, column, series: [{t, z2d, z1d, H2d, H1d}] }
+
+  function linkNode(i) {
+    var spec = model.nodeSpec(i);
+    link = { i: spec.i, column: GS.d1.createNodeColumn(spec), series: [] };
+    recordLink();
+  }
+  function recordLink() {
+    if (!link) return;
+    var st = model.state, c = link.column.state, i = link.i;
+    link.series.push({ t: st.t - link.column.spec.t0, z2d: st.z[i], z1d: c.z, H2d: st.H[i], H1d: c.H, E2d: st.Ef[i] + st.Eg[i], E1d: c.Ef + c.Eg });
+  }
+  function stepLink(nsteps) {
+    if (!link) return;
+    for (var k = 0; k < nsteps; k++) link.column.step();
+    recordLink();
+  }
+  function d1Link() {
+    if (!link) return "#";
+    var sp = link.column.spec, q = new URLSearchParams();
+    q.set("scenario", "node");
+    ["shape", "peakUplift", "duration", "KExp", "m", "nexp", "KgExp", "lexp", "fs", "flow", "contrastK", "contrastKg", "lithoType", "lithoTop", "lithoThick", "lithoPos", "L", "elaBase", "elaAmp", "elaPeriod", "dt"].forEach(function (id) { q.set(id, state[id]); });
+    q.set("s", U.toKm(sp.s).toFixed(3)); q.set("z0", U.toKm(sp.z0).toFixed(4)); q.set("zDown", U.toKm(sp.zDown).toFixed(4)); q.set("HDown", sp.HDown.toFixed(2));
+    q.set("QExp", sp.Q > 0 ? Math.log10(sp.Q).toFixed(3) : 0); q.set("AExp", Math.log10(sp.A / 1e6).toFixed(3)); q.set("W", sp.W.toFixed(1)); q.set("Wf", sp.Wf.toFixed(1));
+    q.set("ds", sp.ds.toFixed(1)); q.set("fac", sp.fac.toFixed(4)); q.set("ucum0", sp.ucum0.toFixed(3)); q.set("t0", sp.t0.toFixed(0)); q.set("runKyr", 500);
+    return "../d1/index.html?" + q.toString();
+  }
 
   function draw() {
     var st = model.state, N = st.N, i;
@@ -167,7 +199,30 @@
     P.line(pRates, "Eg", rows, function (d) { return U.toMmyr(d.Eg); }, C.glac, false, sKm);
     // ice
     P.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm);
+    if (link) [pProfile, pRates, pIce].forEach(function (pn) { P.vline(pn, "node", U.toKm(st.s[link.i])); });
     [pProfile, pRates, pIce].forEach(function (pn) { P.axes(pn); });
+    // linked column overlay
+    P.clear(pLink);
+    if (link && link.series.length > 1) {
+      var ls = link.series, tk = function (d) { return U.toKyr(d.t); };
+      pLink.x.domain([0, Math.max(U.toKyr(ls[ls.length - 1].t), 1)]);
+      var lo = d3.min(ls, function (d) { return U.toKm(Math.min(d.z2d, d.z1d)); }), hi = d3.max(ls, function (d) { return U.toKm(Math.max(d.z2d + d.H2d, d.z1d + d.H1d)); });
+      pLink.y.domain([lo - 0.02, hi + 0.02]);
+      P.line(pLink, "ice2d", ls, function (d) { return U.toKm(d.z2d + d.H2d); }, C.ice, false, tk);
+      P.line(pLink, "ice1d", ls, function (d) { return U.toKm(d.z1d + d.H1d); }, C.ice, true, tk);
+      P.line(pLink, "z2d", ls, function (d) { return U.toKm(d.z2d); }, C.bed, false, tk);
+      P.line(pLink, "z1d", ls, function (d) { return U.toKm(d.z1d); }, C.Us, true, tk);
+      P.endLabel(pLink, "z2d", ls[ls.length - 1], function (d) { return U.toKm(d.z2d); }, C.bed, "profile");
+      P.endLabel(pLink, "z1d", ls[ls.length - 1], function (d) { return U.toKm(d.z1d); }, C.Us, "isolated");
+      P.axes(pLink);
+      var last = ls[ls.length - 1];
+      d3.select("#linkReadout").html("Node at <b>" + U.fmtLen(st.s[link.i]) + "</b> · after " + U.fmtTime(last.t) + ": profile z = <b>" + U.fmtLen(last.z2d) + "</b>, isolated z = <b>" + U.fmtLen(last.z1d) +
+        "</b> · divergence <b>" + (last.z2d - last.z1d).toFixed(1) + " m</b> · erosion now " + U.fmtRate(last.E2d) + " vs " + U.fmtRate(last.E1d) +
+        " · ice " + last.H2d.toFixed(0) + " vs " + last.H1d.toFixed(0) + " m · <a href='" + d1Link() + "' target='_blank'>open this column in d1 ↗</a>");
+    } else {
+      pLink.x.domain([0, 1]); pLink.y.domain([0, 1]); P.axes(pLink);
+      d3.select("#linkReadout").html(link ? "Node linked — run to see the curves." : "Click a point on the long profile to isolate that node as a d1 column and overlay the two.");
+    }
     // history
     var h = st.history, tMyr = function (d) { return U.toMyr(d.t); };
     P.clear(pHist);
@@ -190,7 +245,7 @@
   function frame() {
     if (!playing) return;
     for (var k = 0; k < state.speed; k++) model.step();
-    model.record();
+    model.record(); stepLink(state.speed);
     draw();
     raf = requestAnimationFrame(frame);
   }
@@ -199,15 +254,23 @@
     d3.select("#playPause").text(playing ? "❚❚ Pause" : "▶ Play");
     if (playing) raf = requestAnimationFrame(frame); else if (raf) cancelAnimationFrame(raf);
   }
-  function reset() { setPlaying(false); build(); draw(); url.write(state); }
+  function reset() { setPlaying(false); link = null; build(); draw(); url.write(state); }
   d3.select("#playPause").on("click", function () { setPlaying(!playing); });
-  d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); draw(); });
+  d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); stepLink(state.speed); draw(); });
+  // click tool on the profile: pick the node under the pointer
+  pProfile.svg.style("cursor", "crosshair").on("click", function (ev) {
+    var xy = d3.pointer(ev, pProfile.g.node());
+    var sKmClicked = pProfile.x.invert(xy[0]);
+    var i = Math.round(U.fromKm(sKmClicked) / model.state.ds);
+    linkNode(i); draw();
+  });
   d3.select("#resetBtn").on("click", reset);
 
   GS.ui.buildControls(d3.select("#controls"), specs, state, function (id) {
     // domain / initial-condition changes need a rebuild; everything else applies live via rebuild-in-place of params
-    if (["L", "N", "initProfile", "zHead", "noise"].indexOf(id) !== -1) { reset(); return; }
+    if (["L", "N", "initProfile", "zHead", "noise"].indexOf(id) !== -1 || (state.initProfile === "steady" && model.state.t === 0 && ["KExp", "m", "nexp", "peakUplift", "pattern", "hack"].indexOf(id) !== -1)) { reset(); return; }
     var wasPlaying = playing;
+    link = null; // a parameter change invalidates the frozen column (click again to re-link)
     var keepT = model.state.t, keepZ = model.state.z, keepU = model.state.ucum, keepH = model.state.H, keepHist = model.state.history;
     build();
     // carry the evolving state across a parameter change (same grid)

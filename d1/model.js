@@ -138,3 +138,58 @@
   GS.d1.runColumns = runColumns;
   GS.d1.COLUMN_DEFAULTS = COLUMN_DEFAULTS;
 })(typeof window !== "undefined" ? window : this);
+
+/*
+ * Scenario "node": one node of the along-valley profile as an isolated column — the
+ * d1 ↔ d2_along link. Everything the profile computed from ADJACENCY is frozen at its
+ * click-time value and asserted (downstream bed z_down and ice H_down, ice flux Q leaving
+ * the node, area A, widths W and W_f, node spacing ds); shared FORCING U(t) and ELA(t)
+ * keep running (ELA acts only through the frozen flux, so the column is blind to it);
+ * LOCAL laws and feedbacks remain (lithology in the material frame, slope against the
+ * frozen receiver, thickness from the face flux law against the frozen downstream surface).
+ * Mirrored in py/d1_node.py; py/test_d1_node.py shows the column reproduces the 2D node
+ * exactly when its adjacency is refreshed every step, and diverges when it is not.
+ */
+(function (root) {
+  "use strict";
+  var GS = root.GS, forcing = GS.forcing, laws = GS.laws, litho = GS.lithology;
+
+  function createNodeColumn(spec) {
+    var p = spec.params;
+    var U = forcing.makeSeries({ shape: p.shape, peak: p.peakUplift, duration: p.duration });
+    var ELA = forcing.makeSeries({ shape: "sine", peak: -p.elaAmp, base: p.elaBase, period: p.elaPeriod });
+    var lithoFn = spec.litho ? litho.make(spec.litho) : null;
+    var Gam = laws.ICE.GAMMA * p.flow / (1 - p.fs), n = laws.ICE.N;
+    var frozen = { s: spec.s, zDown: spec.zDown, HDown: spec.HDown, Q: spec.Q, A: spec.A, W: spec.W, Wf: spec.Wf, ds: spec.ds, fac: spec.fac };
+    var st = { t: spec.t0, z: spec.z0, ucum: spec.ucum0, z0: spec.z0, ucum0: spec.ucum0, H: 0, Us: 0, Ef: 0, Eg: 0, r: 0, ecum: 0, series: [] };
+
+    function record() {
+      st.series.push({ t: st.t, z: st.z, H: st.H, Us: st.Us, Ef: st.Ef, Eg: st.Eg, r: st.r, u: U(st.t) * frozen.fac, ela: ELA(st.t) });
+    }
+    function step() {
+      var dt = spec.dt;
+      var r = lithoFn ? lithoFn(frozen.s, 0, litho.materialZ(st.z, st.ucum)) : 0;
+      st.r = r;
+      var fK = litho.erodibilityFactor(r, p.contrastK), fKg = litho.erodibilityFactor(r, p.contrastKg);
+      var du = U(st.t) * frozen.fac * dt;
+      st.z += du; st.ucum += du;
+      var zsDown = frozen.zDown + frozen.HDown;
+      if (frozen.Q > 0) {
+        var H = laws.faceThickness(st.z, zsDown, frozen.HDown, frozen.Q / frozen.Wf, frozen.ds, Gam, n);
+        var Us = H > 0 ? laws.slidingSpeed(frozen.Q / frozen.W, H > 1e-9 ? H : 1e-9, p.fs) : 0;
+        var Eg = H > 1 ? laws.capRate(laws.abrasion(p.Kg * fKg, Us, p.lexp), p.eroCap) : 0;
+        st.z -= Eg * dt; st.H = H; st.Us = Us; st.Eg = Eg; st.Ef = 0; st.ecum += Eg * dt;
+      } else {
+        var h0 = st.z;
+        var Kp = p.K * fK * Math.pow(frozen.A, p.m);
+        var nh = laws.yuanNode(h0, h0, frozen.zDown, Kp, dt, frozen.ds, 0, p.nexp, false);
+        st.z = nh; st.Ef = (h0 - nh) / dt; st.Eg = 0; st.H = 0; st.Us = 0; st.ecum += h0 - nh;
+      }
+      st.t += dt;
+    }
+    record();
+    return { state: st, frozen: frozen, spec: spec, step: step, record: record, U: U, ELA: ELA };
+  }
+
+  GS.d1.createNodeColumn = createNodeColumn;
+})(typeof window !== "undefined" ? window : this);

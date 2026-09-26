@@ -279,6 +279,31 @@ def sia_thickness(q, S, Gamma=None, n=None, Smin=None):
         return 0.0
     return (q / (Gamma * s ** n)) ** (1.0 / (n + 2))
 
+def face_thickness(zi, zs_down, H_down, qf, ds, Gamma, n):
+    """Thickness H_i at a node whose downstream neighbour has surface zs_down and
+    thickness H_down, such that the SIA face flux carries qf (m²/yr):
+        Gamma · (½(H_i + H_down))^(n+2) · ((zi + H_i − zs_down)/ds)^n = qf
+    Monotone in H_i → unique root; bisection to 1e-3 m. qf ≤ 0 → 0."""
+    if qf <= 0.0:
+        return 0.0
+    lo = max(0.0, zs_down - zi)
+    hi = lo + 10.0
+    def f(x):
+        Hf = 0.5 * (x + H_down); Sf = (zi + x - zs_down) / ds
+        return Gamma * Hf ** (n + 2) * Sf ** n - qf
+    while f(hi) < 0.0 and hi < 1e5:
+        hi *= 2.0
+    x = 0.5 * (lo + hi)
+    for _ in range(60):
+        if f(x) > 0.0:
+            hi = x
+        else:
+            lo = x
+        x = 0.5 * (lo + hi)
+        if hi - lo < 1e-3:
+            break
+    return x
+
 def sliding_speed(q, H, fs):
     return fs * q / H if H > 0 else 0.0
 

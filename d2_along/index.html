@@ -10,6 +10,7 @@
   <header>
     <h1>Along-valley profile <span class="tier">d2_along · z(s, t)</span></h1>
     <p>
+      <b>Click the profile</b> to isolate a node as a d1 column and watch the two diverge (bottom panel).
       A long profile from divide to outlet under uplift, <b>stream power</b> with Hack's-law
       drainage area, and a <b>steady-discharge glacier</b>: mass balance routed down the valley
       gives the ice flux, the SIA flux law inverted by marching upstream gives the thickness,
@@ -35,6 +36,7 @@
         <button id="resetBtn">Reset</button>
       </div>
       <div id="readout"></div>
+      <div id="linkReadout" class="readout-2"></div>
       <div class="legend" id="legend">
         <span style="color:#5a3d1e"><i></i>bed</span> <span style="color:#4292c6"><i></i>ice surface</span> <span style="color:#4292c6"><i class="dash"></i>ELA</span>
         <span style="color:#8c2d04"><i style="border-top-width:4px"></i>resistant body</span><br/>
@@ -62,6 +64,7 @@
   <script src="../ui/urlstate.js"></script>
   <script src="../ui/controls.js"></script>
   <script src="../ui/panels.js"></script>
+  <script src="../d1/model.js"></script>
   <script src="model.js"></script>
   <script src="app.js"></script>
 </body>

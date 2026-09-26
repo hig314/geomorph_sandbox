@@ -111,6 +111,28 @@
     if (q <= 0) return 0;
     return Math.pow(q / (Gamma * Math.pow(s, n)), 1 / (n + 2));
   }
+  // Thickness H_i at a node whose downstream neighbour has surface zsDown and thickness
+  // HDown, such that the SIA face flux carries qf (m²/yr):
+  //     Gamma · (½(H_i + HDown))^(n+2) · ((zi + H_i − zsDown)/ds)^n = qf
+  // Monotone in H_i → unique root; bisection to 1e-3 m. qf ≤ 0 → 0. Shared by the
+  // d2_along upstream march and the d1 node column. Mirrored in py/gs_core.py.
+  function faceThickness(zi, zsDown, HDown, qf, ds, Gamma, n) {
+    if (qf <= 0) return 0;
+    var lo = zsDown - zi; if (lo < 0) lo = 0;
+    var hi = lo + 10;
+    var f = function (x) {
+      var Hf = 0.5 * (x + HDown), Sf = (zi + x - zsDown) / ds;
+      return Gamma * Math.pow(Hf, n + 2) * Math.pow(Sf, n) - qf;
+    };
+    while (f(hi) < 0 && hi < 1e5) hi *= 2;
+    var x = 0.5 * (lo + hi);
+    for (var it = 0; it < 60; it++) {
+      if (f(x) > 0) hi = x; else lo = x;
+      x = 0.5 * (lo + hi);
+      if (hi - lo < 1e-3) break;
+    }
+    return x;
+  }
   // Sliding speed as a fraction fs of the depth-averaged speed q/H (m/yr).
   function slidingSpeed(q, H, fs) { return H > 0 ? fs * q / H : 0; }
   // Abrasion E = K_g U_s^l (m/yr).
@@ -141,7 +163,7 @@
     reservoirK: reservoirK, reservoirErosion: reservoirErosion, reservoirEquilibrium: reservoirEquilibrium,
     streamPower: streamPower, yuanNode: yuanNode,
     creepFluxLinear: creepFluxLinear, creepFluxRoering: creepFluxRoering,
-    massBalance: massBalance, siaFlux: siaFlux, siaThickness: siaThickness,
+    massBalance: massBalance, siaFlux: siaFlux, siaThickness: siaThickness, faceThickness: faceThickness,
     slidingSpeed: slidingSpeed, abrasion: abrasion, quarrying: quarrying,
     buzzsawRate: buzzsawRate, capRate: capRate,
     rk4: rk4

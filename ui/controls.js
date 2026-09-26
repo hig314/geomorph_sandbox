@@ -28,6 +28,7 @@
   GS.ui.buildControls = function (rootSel, specs, state, onChange) {
     var groups = {}, order = [];
     specs.forEach(function (c) {
+      if (c.hidden) return; // URL-only state, no control
       var g = c.group || "";
       if (!groups[g]) { groups[g] = []; order.push(g); }
       groups[g].push(c);

@@ -85,6 +85,7 @@ Laws consume r through two multipliers with a per-process contrast c ≥ 1:
 | mass balance | `massBalance(zs, ela, bg, accMax, abMax, ablRatio)` | terrain_sandbox (ablation gradient 2.5× accumulation) |
 | SIA flux | `siaFlux(H, S, Γ, n)` = Γ H^(n+2) Sⁿ | Glen n = 3, A = 7.57e-17 Pa⁻³ yr⁻¹, Γ = 2A/(n+2)·(ρg)ⁿ |
 | SIA thickness inversion | `siaThickness(q, S, Γ, n, Smin)` = (q/(Γ Sⁿ))^(1/(n+2)), slope floored at Smin | MacGregor et al. 2000 / Anderson et al. 2006 flowline form |
+| face thickness | `faceThickness(zi, zsDown, HDown, qf, ds, Γ, n)` root of Γ(½(H+H_down))^(n+2)((z+H−zs_down)/ds)^n = q_f | the march (d2_along) and the node column (d1) |
 | sliding | `slidingSpeed(q, H, fs)` = fs·q/H | |
 | abrasion | `abrasion(Kg, Us, l)` = Kg·Us^l | Hallet 1979; l = 1 after Humphrey & Raymond 1994 |
 | quarrying | `quarrying(Kq, Us, convexity)` = Kq·Us·max(convexity, 0) | the knob for hypothesis A |

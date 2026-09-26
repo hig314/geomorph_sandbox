@@ -20,10 +20,10 @@
 
   var DEFAULTS = {
     L: 30000, N: 301,
-    initProfile: "concave", zHead: 2500, noise: 0, seed: 1,
+    initProfile: "steady", zHead: 2500, noise: 0, seed: 1,
     shape: "constant", peakUplift: 1e-3, duration: 1e7, pattern: "uniform", ramp: 0.1,
-    K: 2e-5, m: 0.5, nexp: 1.0, G: 0, ka: 5.7, hack: 1.667, s0: 200, W0: 300, kw: 0.05,
-    glacierOn: true, elaBase: 1800, elaAmp: 0, elaPeriod: 1e5, balGrad: 0.007,
+    K: 3.2e-6, m: 0.5, nexp: 1.0, G: 0, ka: 5.7, hack: 1.667, s0: 200, W0: 300, kw: 0.05,
+    glacierOn: true, elaBase: 1500, elaAmp: 0, elaPeriod: 1e5, balGrad: 0.007,
     accMax: 2.0, abMax: 8.0, fs: 0.5, flow: 1.0, Kg: 1e-4, lexp: 1.0, eroCap: 0.02,
     Kq: 0, iceIters: 30, relax: 0.5, smin: 1e-3, iceTol: 0.01,
     litho: null, contrastK: 5, contrastKg: 5,
@@ -43,30 +43,14 @@
     }
   }
 
-  // Given Q_i leaving node i, march upstream from the outlet solving the face flux law
-  //   Gam Hf^(n+2) Sf^n = Q_i / Wf,  Hf = ½(H_i + H_{i+1}),  Sf = (z_i + H_i − zs_{i+1})/ds
-  // for H_i (monotone in H_i → unique root; bisection).
+  // Given Q_i leaving node i, march upstream from the outlet solving the face flux law for
+  // H_i given H_{i+1} (laws.faceThickness: monotone → unique root).
   function marchThickness(z, W, Q, ds, Gam, n, N, H) {
     H[N - 1] = 0;
     for (var i = N - 2; i >= 0; i--) {
-      var Qi = Q[i];
-      if (Qi <= 0) { H[i] = 0; continue; }
-      var Wf = 0.5 * (W[i] + W[i + 1]), qf = Qi / Wf;
-      var Hd = H[i + 1], zsd = z[i + 1] + Hd, zi = z[i];
-      var lo = zsd - zi; if (lo < 0) lo = 0;
-      var hi = lo + 10;
-      var f = function (x) {
-        var Hf = 0.5 * (x + Hd), Sf = (zi + x - zsd) / ds;
-        return Gam * Math.pow(Hf, n + 2) * Math.pow(Sf, n) - qf;
-      };
-      while (f(hi) < 0 && hi < 1e5) hi *= 2;
-      var x = 0.5 * (lo + hi);
-      for (var it = 0; it < 60; it++) {
-        if (f(x) > 0) hi = x; else lo = x;
-        x = 0.5 * (lo + hi);
-        if (hi - lo < 1e-3) break;
-      }
-      H[i] = x;
+      if (Q[i] <= 0) { H[i] = 0; continue; }
+      var Wf = 0.5 * (W[i] + W[i + 1]);
+      H[i] = laws.faceThickness(z[i], z[i + 1] + H[i + 1], H[i + 1], Q[i] / Wf, ds, Gam, n);
     }
   }
 
@@ -102,6 +86,13 @@
       fac[i] = forcing.spatialFactor(s / L, 0.5, p.pattern, p.ramp);
     }
     st.z[N - 1] = 0;
+    if (p.initProfile === "steady" && p.K > 0) { // analytic fluvial steady state for U_peak·f(s): S = (U f / K A^m)^(1/n)
+      var zz0 = 0;
+      for (i = N - 2; i >= 0; i--) {
+        zz0 += ds * Math.pow(p.peakUplift * fac[i] / (p.K * Math.pow(st.A[i], p.m)), 1 / p.nexp);
+        st.z[i] = zz0 + (p.noise > 0 ? st.z[i] - (p.zHead * Math.pow(1 - st.s[i] / L, 1.5)) : 0);
+      }
+    }
     st.z0 = new Float32Array(st.z);
 
     var U = forcing.makeSeries({ shape: p.shape, peak: p.peakUplift, duration: p.duration });
@@ -209,6 +200,13 @@
       st.t += dt;
     }
 
+    // Solve the steady ice on the initial bed without eroding, so the t = 0 state (and a
+    // node isolated from it) carries the glacier the first step would see.
+    function primeIce() {
+      if (!p.glacierOn) return;
+      steadyIce(ELA(st.t));
+    }
+
     function diagnostics() {
       var z = st.z, H = st.H, zmax = -1e9, zmin = 1e9, vol = 0, term = -1, hmax = 0, k;
       for (k = 0; k < N; k++) {
@@ -226,10 +224,29 @@
 
     function record() { st.history.push(diagnostics()); }
 
-    return { state: st, p: p, step: step, diagnostics: diagnostics, record: record, U: U, ELA: ELA };
+    // Everything a d1 node column needs to be born from node i, frozen at this instant.
+    function nodeSpec(i) {
+      if (i < 0) i = 0; if (i > N - 2) i = N - 2;
+      return {
+        i: i, s: st.s[i], z0: st.z[i], ucum0: st.ucum[i], zDown: st.z[i + 1], HDown: st.H[i + 1],
+        Q: st.q[i] * st.W[i], A: st.A[i], W: st.W[i], Wf: 0.5 * (st.W[i] + st.W[i + 1]), ds: ds, fac: fac[i],
+        t0: st.t, dt: p.dt, params: p, litho: p.litho
+      };
+    }
+
+    return { state: st, p: p, step: step, primeIce: primeIce, diagnostics: diagnostics, record: record, nodeSpec: nodeSpec, U: U, ELA: ELA };
   }
 
-  var api = { DEFAULTS: DEFAULTS, createModel: createModel, hackArea: hackArea, valleyWidth: valleyWidth, marchThickness: marchThickness, routeFlux: routeFlux };
+  // Lithology spec from the shared control values (SI units). Used by the d2_along page
+  // and by the d1 node scenario so a column opened from a node carries the same body.
+  function lithoFromControls(type, topM, thickM, pos, Lm) {
+    if (type === "layer") return { type: "layer", top: topM, thick: thickM, soft: 5 };
+    if (type === "slab") return { type: "slab", top: topM, thick: thickM, dipX: -pos * 0.2, soft: 5 };
+    if (type === "dike") return { type: "dike", x0: pos * Lm, width: thickM, soft: 5 };
+    return null;
+  }
+
+  var api = { DEFAULTS: DEFAULTS, createModel: createModel, lithoFromControls: lithoFromControls, hackArea: hackArea, valleyWidth: valleyWidth, marchThickness: marchThickness, routeFlux: routeFlux };
   GS.d2along = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : this);

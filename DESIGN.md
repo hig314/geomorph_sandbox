@@ -56,6 +56,13 @@ long profiles with Hack's-law area; d2_across = Harbor (1992) U-shape shaping an
 2D method of slices for landslides; d3 = the existing coupled DEM model (see
 `legacy/terrain_sandbox/DESIGN.md`).
 
+**Isolating a point across tiers.** Every tier can hand one of its points down the ladder:
+click a node of the along-valley profile and it opens as a d1 column with the same laws and
+every adjacency-derived quantity frozen and badged asserted; the column then runs in
+lockstep with the profile and the two curves are overlaid. The gap between them is the
+behaviour that arises from the extra dimension (`docs/linking.md`). The same device is
+planned from d2_across and d3.
+
 **Why the ladder helps the hard problem.** Steady ice flux in a flowline is the integral of
 mass balance times width; thickness comes from inverting the flow law locally. The d3 glacier
 rebuild (§4) is exactly that, with the flux obtained by *routing* mass balance over the ice
@@ -168,7 +175,9 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
 5. **d3.** Swap the glacier to the routed steady-discharge model; per-cell strength fields;
    scoops sampling strength along the slip surface.
 6. **Illustration layer (all tiers).** A/B presets, time-forced ELA, lockstep A/B split view
-   sharing one seed, slope-vs-elevation diagnostic, "asserted" badges in the UI.
+   sharing one seed, slope-vs-elevation diagnostic, "asserted" badges in the UI (✓ badges
+   and methodology tooltips exist), and the cross-tier "isolate a point" link (✓ d2_along → d1,
+   2026-09-25; d2_across → d1 and d3 → d2/d1 to follow).
 
 ## 7. Open questions / tweaks to discuss
 

@@ -74,6 +74,24 @@
       "py/d1_columns.py mirrors this; py/test_d1_columns.py checks z = z<sub>0</sub> + U<sub>cum</sub> − E<sub>cum</sub>, the T·c/U lifetime, exposure at d/U, the analytic buzzsaw cap.", "computed"),
     pRates: M("Erosion rates", ["E<sub>A</sub> = k z<sub>A</sub><sup>n</sup> + E<sub>gl</sub>(z<sub>A</sub>)", "E<sub>B</sub> = D<sub>B</sub> f(r<sub>B</sub>, c) + E<sub>gl</sub>(z<sub>B</sub>) f(r<sub>B</sub>, c<sub>g</sub>)"],
       "Total lowering rate of each column against the uplift rate (dashed grey). B's rate drops by the contrast while the body is at its surface.", null, "computed"),
+    nodeIntro: M("Isolated node of the along-valley profile", [
+        "dz/dt = U(t) f − E<sub>f</sub> − E<sub>g</sub>",
+        "ice-free:  E<sub>f</sub> = K f<sub>K</sub> A<sup>m</sup> ((z − z<sub>down</sub>)/ds)<sup>n</sup>  (implicit)",
+        "under ice: Γ′ (½(H + H<sub>down</sub>))<sup>5</sup> ((z + H − z<sub>down</sub> − H<sub>down</sub>)/ds)<sup>3</sup> = Q/W<sub>f</sub>,  U<sub>s</sub> = f<sub>s</sub> (Q/W)/H,  E<sub>g</sub> = K<sub>g</sub> f<sub>Kg</sub> U<sub>s</sub><sup>l</sup>"],
+      "The same laws as the profile, for one node, with everything that came from its neighbours frozen and badged asserted. Perturb the constants to ask what the neighbours would have to do to change this column's fate. The ELA sliders are inert here: the ELA reaches a node only through the flux Q, which is frozen.",
+      "d1/model.js createNodeColumn; py/d1_node.py; docs/linking.md", "asserted"),
+    nS: M("Position along the valley s", ["r = body(s, z − U<sub>cum</sub>)"], "Enters only through the lithology field (a dike is a band in s).", null, "asserted"),
+    nZ0: M("Initial elevation z(t<sub>0</sub>)", null, "The node's bed at the moment it was isolated.", null, "asserted"),
+    nZDown: M("Downstream bed z<sub>down</sub>", ["S = (z − z<sub>down</sub>)/ds"], "The receiver's elevation, frozen. In the profile it keeps eroding; here it is the column's base level.", null, "asserted"),
+    nHDown: M("Downstream ice thickness H<sub>down</sub>", ["surface below = z<sub>down</sub> + H<sub>down</sub>"], "Frozen; sets the downstream ice surface the face law works against.", null, "asserted"),
+    nQ: M("Ice flux Q leaving the node", ["Q = ∫<sub>0</sub><sup>s</sup> b W ds  (in the profile)"], "Frozen. Q = 0 means no ice: the node is fluvial. Everything upstream of the node is in this one number.", null, "asserted"),
+    nA: M("Drainage area A", ["A = k<sub>a</sub>(s + s<sub>0</sub>)<sup>h</sup>"], "Hack's law in the profile; a constant here.", null, "asserted"),
+    nW: M("Valley width W", ["q = Q/W;  W<sub>f</sub> = ½(W + W<sub>down</sub>)"], null, null, "asserted"),
+    nDs: M("Node spacing ds", ["S = (z − z<sub>down</sub>)/ds"], null, null, "asserted"),
+    nFac: M("Spatial uplift factor f", ["U(s, t) = U(t) f"], null, null, "asserted"),
+    nRun: M("Run length", null, "How far past t<sub>0</sub> to integrate.", null, null),
+    pNodeZ: M("Elevation of the isolated node", ["z(t), ice surface z + H, z<sub>down</sub> (frozen)"], "Under ice the bed lowers against a frozen downstream surface, so H grows and sliding slows: a self-limiting overdeepening. Ice-free, the slope relaxes toward (U f / K A<sup>m</sup>)<sup>1/n</sup>.", null, "computed"),
+    pNodeE: M("Erosion rates", ["E<sub>f</sub>, E<sub>g</sub>, U f"], null, null, "computed"),
     pDiff: M("Upland height z<sub>B</sub> − z<sub>A</sub>", ["d(z<sub>B</sub> − z<sub>A</sub>)/dt = E<sub>A</sub> − E<sub>B</sub>"],
       "The hypothesis-B diagnostic: how high the resistant column stands above the weak landscape, and whether that survives the uplift event. Under the landscape coupling it can only grow or freeze (destruction by marginal retreat needs d2_across); under own-relief or max it is bounded and decays after stripping.", null, "computed")
   };
@@ -83,7 +101,6 @@
     { v: "bell", t: "Bell curve" }, { v: "plateau", t: "Ramp · hold · decay" }, { v: "pulse", t: "Pulse (sharp rise, decay)" },
     { v: "arc", t: "Circular arc" }, { v: "triangle", t: "Triangle" }, { v: "constant", t: "Constant (square pulse)" }
   ];
-  var SCEN = [{ v: "columns", t: "Two columns A / B (lithology + buzzsaw)" }, { v: "reservoir", t: "Relief reservoir (legacy)" }];
   var common = [
     { id: "shape", label: "Uplift shape", type: "select", val: "bell", options: SHAPES, group: "Forcing", method: m.shape },
     { id: "peakUplift", label: "Peak uplift", type: "range", min: 0.1, max: 10, step: 0.1, val: 3, unit: "mm/yr", group: "Forcing", method: m.peakUplift },
@@ -112,9 +129,41 @@
     { id: "buzzWidth", label: "Buzzsaw half-width", type: "range", min: 50, max: 1000, step: 25, val: 300, unit: "m", group: "Glacier (asserted ice)", asserted: true, method: m.buzzWidth },
     { id: "buzzAbove", label: "Erosion floor above ELA φ", type: "range", min: 0, max: 1, step: 0.05, val: 0, unit: "", group: "Glacier (asserted ice)", asserted: true, method: m.buzzAbove }
   ];
+  var nodeSpecs = [
+    { id: "s", label: "Position s", type: "range", min: 0, max: 60, step: 0.1, val: 10, unit: "km", group: "Node (frozen adjacency)", asserted: true, method: m.nS },
+    { id: "z0", label: "Initial elevation", type: "range", min: 0, max: 5, step: 0.01, val: 1.5, unit: "km", group: "Node (frozen adjacency)", asserted: true, method: m.nZ0 },
+    { id: "zDown", label: "Downstream bed", type: "range", min: 0, max: 5, step: 0.01, val: 1.48, unit: "km", group: "Node (frozen adjacency)", asserted: true, method: m.nZDown },
+    { id: "HDown", label: "Downstream ice", type: "range", min: 0, max: 800, step: 1, val: 0, unit: "m", group: "Node (frozen adjacency)", asserted: true, method: m.nHDown },
+    { id: "QExp", label: "Ice flux Q (min = none)", type: "range", min: 0, max: 8, step: 0.05, val: 0, log: true, group: "Node (frozen adjacency)", asserted: true, method: m.nQ,
+      fmt: function (v) { return v <= 0 ? "no ice" : Math.pow(10, v).toExponential(2) + " m³/yr"; } },
+    { id: "AExp", label: "Drainage area A", type: "range", min: -2, max: 3, step: 0.05, val: 1.5, log: true, group: "Node (frozen adjacency)", asserted: true, method: m.nA,
+      fmt: function (v) { return Math.pow(10, v).toPrecision(3) + " km²"; } },
+    { id: "W", label: "Valley width", type: "range", min: 50, max: 3000, step: 10, val: 800, unit: "m", group: "Node (frozen adjacency)", asserted: true, method: m.nW },
+    { id: "ds", label: "Node spacing", type: "range", min: 25, max: 500, step: 5, val: 100, unit: "m", group: "Node (frozen adjacency)", asserted: true, method: m.nDs },
+    { id: "fac", label: "Uplift factor at s", type: "range", min: 0, max: 1, step: 0.01, val: 1, unit: "", group: "Node (frozen adjacency)", asserted: true, method: m.nFac },
+    { id: "Wf", type: "range", val: 800, min: 0, max: 1e5, hidden: true }, { id: "ucum0", type: "range", val: 0, min: -1e6, max: 1e6, hidden: true }, { id: "t0", type: "range", val: 0, min: 0, max: 1e9, hidden: true },
+    { id: "runKyr", label: "Run length", type: "range", min: 50, max: 3000, step: 50, val: 500, unit: "kyr", group: "Run", method: m.nRun },
+    { id: "dt", label: "Time step", type: "range", min: 100, max: 2000, step: 100, val: 500, unit: "yr", group: "Run", asserted: true },
+    { id: "KExp", label: "Erodibility K", type: "range", min: -7, max: -4, step: 0.1, val: -5.5, log: true, group: "Process laws (as in d2_along)", method: M("Fluvial erodibility K", ["E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup>"], null, null, "asserted") },
+    { id: "m", label: "Area exponent m", type: "range", min: 0.3, max: 0.7, step: 0.05, val: 0.5, unit: "", group: "Process laws (as in d2_along)", asserted: true },
+    { id: "nexp", label: "Slope exponent n", type: "range", min: 1, max: 2, step: 0.25, val: 1, unit: "", group: "Process laws (as in d2_along)", asserted: true },
+    { id: "KgExp", label: "Glacial erodibility K_g", type: "range", min: -6, max: -2, step: 0.1, val: -4, log: true, group: "Process laws (as in d2_along)", method: M("Glacial erodibility", ["E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup>, capped at 2 cm/yr"], null, null, "asserted") },
+    { id: "lexp", label: "Sliding exponent l", type: "range", min: 1, max: 2, step: 0.25, val: 1, unit: "", group: "Process laws (as in d2_along)", asserted: true },
+    { id: "fs", label: "Sliding fraction", type: "range", min: 0, max: 0.95, step: 0.05, val: 0.5, unit: "", group: "Process laws (as in d2_along)", asserted: true },
+    { id: "flow", label: "Flow enhancement", type: "range", min: 0.2, max: 5, step: 0.1, val: 1, unit: "×", group: "Process laws (as in d2_along)", asserted: true },
+    { id: "contrastK", label: "Fluvial contrast", type: "range", min: 1, max: 20, step: 0.5, val: 5, unit: "×", group: "Lithology (as in d2_along)", asserted: true },
+    { id: "contrastKg", label: "Glacial contrast", type: "range", min: 1, max: 20, step: 0.5, val: 5, unit: "×", group: "Lithology (as in d2_along)", asserted: true },
+    { id: "lithoType", label: "Body type", type: "select", val: "none", options: [{ v: "none", t: "None" }, { v: "layer", t: "Horizontal layer" }, { v: "slab", t: "Dipping slab" }, { v: "dike", t: "Vertical dike" }], group: "Lithology (as in d2_along)", asserted: true },
+    { id: "lithoTop", label: "Body top", type: "range", min: 0, max: 5, step: 0.1, val: 1.5, unit: "km", group: "Lithology (as in d2_along)", asserted: true },
+    { id: "lithoThick", label: "Thickness / width", type: "range", min: 0.05, max: 3, step: 0.05, val: 0.3, unit: "km", group: "Lithology (as in d2_along)", asserted: true },
+    { id: "lithoPos", label: "Dike position / slab dip", type: "range", min: 0, max: 1, step: 0.05, val: 0.5, unit: "", group: "Lithology (as in d2_along)", asserted: true },
+    { id: "L", label: "Valley length (for the dike position)", type: "range", min: 10, max: 60, step: 5, val: 30, unit: "km", group: "Lithology (as in d2_along)", asserted: true }
+  ];
+  var SCEN = [{ v: "columns", t: "Two columns A / B (lithology + buzzsaw)" }, { v: "reservoir", t: "Relief reservoir (legacy)" }, { v: "node", t: "Isolated node of the along-valley profile" }];
   var scenarioSpec = { id: "scenario", label: "Scenario", type: "select", val: "columns", options: SCEN, group: "",
-    method: M("Scenarios", null, "<b>Two columns</b>: the illustration device (DESIGN.md §3) — a weak and a resistant column under one forcing, with an asserted elevation-dependent glacial rate. <b>Relief reservoir</b>: the legacy 1-D model, kept as a scenario.") };
-  var allSpecs = [scenarioSpec].concat(common, landscape, body, glacier);
+    method: M("Scenarios", null, "<b>Two columns</b>: the illustration device (DESIGN.md §3) — a weak and a resistant column under one forcing, with an asserted elevation-dependent glacial rate. <b>Relief reservoir</b>: the legacy 1-D model, kept as a scenario. <b>Isolated node</b>: one node of the along-valley profile with its adjacency frozen — opened from a click on the d2_along page, or configured here.") };
+  var nodeIntroSpec = { id: "nodeIntro", label: "What this is", type: "check", val: true, hidden: true };
+  var allSpecs = [scenarioSpec].concat(common, landscape, body, glacier, nodeSpecs);
   var url = GS.ui.urlState(GS.ui.toUrlSpecs(allSpecs));
   var state = url.read();
 
@@ -134,13 +183,20 @@
       panels.push(P.make(charts, { title: "Relief", yLabel: "R (km)", color: C.relief, method: m.pRelief }));
       panels.push(P.make(charts, { title: "Erosion  vs  uplift flux", yLabel: "rate (mm/yr)", color: C.erosion, method: m.pErosion }));
       panels.push(P.make(charts, { title: "Net rate  (uplift − erosion = dR/dt)", yLabel: "net (mm/yr)", color: C.net, showX: true, xLabel: "time (Myr)", method: m.pNet }));
+    } else if (state.scenario === "node") {
+      panels.push(P.make(charts, { title: "Isolated node: elevation, ice surface, frozen downstream bed", yLabel: "z (km)", color: C.B, method: m.nodeIntro }));
+      panels.push(P.make(charts, { title: "Erosion rates  vs  uplift", yLabel: "rate (mm/yr)", color: C.erosion, method: m.pNodeE }));
+      panels.push(P.make(charts, { title: "Ice thickness and sliding speed (scaled)", yLabel: "H (m)", color: C.ela, showX: true, xLabel: "time since t₀ (kyr)", method: m.pNodeZ }));
     } else {
       panels.push(P.make(charts, { title: "Uplift", yLabel: "U (mm/yr)", color: C.uplift, method: m.pUplift }));
       panels.push(P.make(charts, { title: "Elevation above base level  —  A weak · B resistant body", yLabel: "z (km)", color: C.B, method: m.pElev }));
       panels.push(P.make(charts, { title: "Erosion rates  vs  uplift", yLabel: "rate (mm/yr)", color: C.erosion, method: m.pRates }));
       panels.push(P.make(charts, { title: "Upland height  z_B − z_A", yLabel: "Δz (km)", color: C.diff, showX: true, xLabel: "time (Myr)", method: m.pDiff }));
     }
-    d3.select("#legend").html(state.scenario === "reservoir"
+    d3.select("#legend").html(state.scenario === "node"
+      ? '<span style="color:' + C.B + '"><i></i>bed z</span> <span style="color:' + C.ela + '"><i></i>ice surface</span> <span style="color:#999"><i class="dash"></i>downstream bed (frozen)</span><br/>' +
+        '<span style="color:#2c7fb8"><i></i>fluvial</span> <span style="color:' + C.erosion + '"><i></i>glacial</span> <span style="color:#888"><i class="dash"></i>uplift</span> <span style="color:' + C.diff + '"><i class="dash"></i>sliding (scaled)</span>'
+      : state.scenario === "reservoir"
       ? '<span style="color:#238b45"><i></i>relief R</span> <span style="color:#999"><i class="dash"></i>equilibrium R</span><br/>' +
         '<span style="color:#d94801"><i></i>erosion</span> <span style="color:#888"><i class="dash"></i>uplift flux</span>'
       : '<span style="color:' + C.A + '"><i></i>column A (weak)</span> <span style="color:' + C.B + '"><i></i>column B (resistant body)</span><br/>' +
@@ -226,15 +282,55 @@
     d3.select("#readout").html(html);
   }
 
+  function renderNode() {
+    var Lm = U.fromKm(state.L);
+    var params = {
+      shape: state.shape, peakUplift: U.fromMmyr(state.peakUplift), duration: U.fromMyr(state.duration),
+      elaBase: U.fromKm(state.elaBase), elaAmp: U.fromKm(state.elaAmp), elaPeriod: U.fromKyr(state.elaPeriod),
+      K: Math.pow(10, state.KExp), m: state.m, nexp: state.nexp, Kg: Math.pow(10, state.KgExp), lexp: state.lexp, fs: state.fs, flow: state.flow,
+      eroCap: 0.02, contrastK: state.contrastK, contrastKg: state.contrastKg
+    };
+    var col = GS.d1.createNodeColumn({
+      s: U.fromKm(state.s), z0: U.fromKm(state.z0), ucum0: +state.ucum0, zDown: U.fromKm(state.zDown), HDown: state.HDown,
+      Q: state.QExp > 0 ? Math.pow(10, state.QExp) : 0, A: Math.pow(10, state.AExp) * 1e6, W: state.W, Wf: +state.Wf > 0 ? +state.Wf : state.W,
+      ds: state.ds, fac: state.fac, t0: +state.t0, dt: state.dt, params: params,
+      litho: GS.d2along.lithoFromControls(state.lithoType, U.fromKm(state.lithoTop), U.fromKm(state.lithoThick), state.lithoPos, Lm)
+    });
+    var nsteps = Math.round(U.fromKyr(state.runKyr) / state.dt);
+    for (var k = 0; k < nsteps; k++) { col.step(); col.record(); }
+    var data = col.state.series, last = data[data.length - 1], t0 = +state.t0;
+    var tk = function (d) { return U.toKyr(d.t - t0); };
+    var pZ = panels[0], pE = panels[1], pI = panels[2];
+    var zLo = d3.min(data, function (d) { return U.toKm(Math.min(d.z, U.fromKm(state.zDown))); }), zHi = d3.max(data, function (d) { return U.toKm(d.z + d.H); });
+    var eMax = d3.max(data, function (d) { return U.toMmyr(Math.max(d.Ef, d.Eg, d.u)); }) || 0.1;
+    var hMax = d3.max(data, function (d) { return d.H; }) || 1, usMax = d3.max(data, function (d) { return d.Us; }) || 1;
+    panels.forEach(function (pn) { pn.x.domain([0, U.toKyr(last.t - t0)]); P.clear(pn); });
+    pZ.y.domain([zLo - 0.02, zHi + 0.02]); pE.y.domain([0, eMax * 1.1]); pI.y.domain([0, hMax * 1.1]);
+    P.line(pZ, "zdown", data, function () { return state.zDown; }, "#999", true, tk);
+    P.line(pZ, "ice", data, function (d) { return U.toKm(d.z + d.H); }, C.ela, false, tk);
+    P.line(pZ, "z", data, function (d) { return U.toKm(d.z); }, C.B, false, tk);
+    P.line(pE, "u", data, function (d) { return U.toMmyr(d.u); }, C.flux, true, tk);
+    P.line(pE, "Ef", data, function (d) { return U.toMmyr(d.Ef); }, "#2c7fb8", false, tk);
+    P.line(pE, "Eg", data, function (d) { return U.toMmyr(d.Eg); }, C.erosion, false, tk);
+    P.line(pI, "H", data, function (d) { return d.H; }, C.ela, false, tk);
+    P.line(pI, "Us", data, function (d) { return hMax * 1.1 * d.Us / (usMax * 1.1); }, C.diff, true, tk);
+    panels.forEach(function (pn) { P.axes(pn); });
+    d3.select("#readout").html("Isolated node at <b>" + U.fmtLen(U.fromKm(state.s)) + "</b>: z " + U.fmtLen(U.fromKm(state.z0)) + " → <b>" + U.fmtLen(last.z) + "</b> after " + U.fmtTime(last.t - t0) +
+      " · ice " + last.H.toFixed(0) + " m · sliding " + last.Us.toFixed(1) + " m/yr · erosion " + U.fmtRate(last.Ef + last.Eg) + (col.frozen.Q > 0 ? " (glacial)" : " (fluvial)") +
+      " · <a href='../d2_along/index.html'>back to the profile</a>");
+  }
+
   function render() {
-    if (state.scenario === "reservoir") renderReservoir(); else renderColumns();
+    if (state.scenario === "reservoir") renderReservoir(); else if (state.scenario === "node") renderNode(); else renderColumns();
     url.write(state);
   }
 
   function buildSidebar() {
     var root = d3.select("#controls");
     root.selectAll("*").remove();
-    var specs = state.scenario === "reservoir" ? [scenarioSpec].concat(common, landscape) : allSpecs;
+    var specs = state.scenario === "reservoir" ? [scenarioSpec].concat(common, landscape)
+              : state.scenario === "node" ? [scenarioSpec].concat(common, nodeSpecs)
+              : [scenarioSpec].concat(common, landscape, body, glacier);
     GS.ui.buildControls(root, specs, state, function (id) {
       if (id === "scenario") { buildSidebar(); buildPanels(); }
       render();

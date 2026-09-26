@@ -80,13 +80,16 @@ z, A = st["z"], st["A"]; S = (z[:-1] - z[1:]) / ds; Sa = (1e-3 / (3e-5 * A[:-1] 
 check("fluvial steady slope–area n=1.5", np.max(np.abs(S / Sa - 1)) < 0.01 and np.max(np.abs(st2["z"] - z)) < 1.0,
       "max rel %.1e, relief %.0f m, drift 8→12 Myr %.2f m" % (np.max(np.abs(S / Sa - 1)), z[0], np.max(np.abs(st2["z"] - z))))
 check("fluvial erosion = uplift at steady state", np.max(np.abs(st["Ef"][:-1] - 1e-3)) < 1e-9)
+# the "steady" initial profile is the fluvial steady state: it does not move under fluvial-only forcing
+ss = d2.run({"glacierOn": False, "initProfile": "steady", "dt": 1000.0, "N": 151}, nsteps=100)
+check("steady initial profile is stationary", np.max(np.abs(ss["z"] - d2.init_profile(ss["p"])[2])) < 1e-6, "max |Δz| %.2e m" % np.max(np.abs(ss["z"] - d2.init_profile(ss["p"])[2])))
 # mass closure with deposition: eroded − deposited = exported
 for G in (0.5, 1.5):
     r = d2.run({"glacierOn": False, "G": G, "dt": 1000.0, "N": 151}, nsteps=300)
     check("fluvial closure G=%.1f" % G, abs(r["eroFluv"] - r["exported"]) < 1e-9 * r["eroFluv"], "rel %.1e" % ((r["eroFluv"] - r["exported"]) / r["eroFluv"]))
 # dt independence: exact at steady state, small in a transient
-f1 = d2.run({"glacierOn": False, "dt": 500.0, "N": 151, "initProfile": "linear", "zHead": 1000.0}, nsteps=6000)
-f2 = d2.run({"glacierOn": False, "dt": 2000.0, "N": 151, "initProfile": "linear", "zHead": 1000.0}, nsteps=1500)
+f1 = d2.run({"glacierOn": False, "K": 2e-5, "dt": 500.0, "N": 151, "initProfile": "linear", "zHead": 1000.0}, nsteps=6000)
+f2 = d2.run({"glacierOn": False, "K": 2e-5, "dt": 2000.0, "N": 151, "initProfile": "linear", "zHead": 1000.0}, nsteps=1500)
 check("fluvial steady state dt-independent", np.max(np.abs(f1["z"] - f2["z"])) < 0.01, "%.3f m" % np.max(np.abs(f1["z"] - f2["z"])))
 a = d2.run({"dt": 250.0, "N": 151, "Kg": 1e-3}, nsteps=800); b = d2.run({"dt": 1000.0, "N": 151, "Kg": 1e-3}, nsteps=200)
 check("coupled transient dt 250 vs 1000 within 25 m", np.max(np.abs(a["z"] - b["z"])) < 25.0, "%.1f m" % np.max(np.abs(a["z"] - b["z"])))
@@ -123,8 +126,8 @@ check("dike: steady slope × contrast inside, analytic outside", abs(S[i_in] / S
 # A layer in the material frame rides up with uplift: with no erosion (K = 0) the surface
 # resistance pattern is unchanged after 200 m of uplift, since z_m = z − U_cum is invariant.
 spec = {"type": "layer", "top": 1500.0, "thick": 300.0}
-r0 = d2.run({"glacierOn": False, "K": 0.0, "dt": 1000.0, "N": 151, "peakUplift": 2e-3}, nsteps=1, litho_spec=spec)
-r1 = d2.run({"glacierOn": False, "K": 0.0, "dt": 1000.0, "N": 151, "peakUplift": 2e-3}, nsteps=100, litho_spec=spec)
+r0 = d2.run({"glacierOn": False, "K": 0.0, "initProfile": "concave", "dt": 1000.0, "N": 151, "peakUplift": 2e-3}, nsteps=1, litho_spec=spec)
+r1 = d2.run({"glacierOn": False, "K": 0.0, "initProfile": "concave", "dt": 1000.0, "N": 151, "peakUplift": 2e-3}, nsteps=100, litho_spec=spec)
 z0 = d2.init_profile(r0["p"])[2]
 expect = ((z0 >= 1200.0) & (z0 <= 1500.0)).astype(float)
 check("layer exposed where z0 ∈ [top − thick, top] at t = 0", np.array_equal(r0["r"], expect) and expect.sum() > 3)

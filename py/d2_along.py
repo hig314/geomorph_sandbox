@@ -67,36 +67,15 @@ def route_flux(b, W, ds):
 
 def march_thickness(z, W, Q, ds, Gam, n, N):
     """Given the volume flux Q_i leaving node i (m³/yr), march upstream from the outlet
-    solving the face flux law for H_i:
-        Gam * Hf^(n+2) * Sf^n = Q_i / Wf,   Hf = ½(H_i + H_{i+1}),  Sf = (z_i + H_i − zs_{i+1}) / ds
-    The left side is monotone in H_i, so the root is unique (bisection + Newton).
-    Nodes whose outgoing flux is zero carry no ice (terminus and ice-free ground)."""
+    solving the face flux law for H_i given H_{i+1} (core face_thickness: monotone → unique
+    root). Nodes whose outgoing flux is zero carry no ice (terminus and ice-free ground)."""
     H = np.zeros(N)
     for i in range(N - 2, -1, -1):
-        Qi = Q[i]
-        if Qi <= 0.0:
+        if Q[i] <= 0.0:
             H[i] = 0.0
             continue
-        Wf = 0.5 * (W[i] + W[i + 1]); qf = Qi / Wf
-        Hd = H[i + 1]; zsd = z[i + 1] + Hd
-        lo = max(0.0, zsd - z[i])          # zero surface slope → flux 0 < qf
-        hi = lo + 10.0
-        def f(x):
-            Hf = 0.5 * (x + Hd); Sf = (z[i] + x - zsd) / ds
-            return Gam * Hf ** (n + 2) * Sf ** n - qf
-        while f(hi) < 0.0 and hi < 1e5:
-            hi *= 2.0
-        x = 0.5 * (lo + hi)
-        for _ in range(60):
-            fx = f(x)
-            if fx > 0.0:
-                hi = x
-            else:
-                lo = x
-            x = 0.5 * (lo + hi)
-            if hi - lo < 1e-3:
-                break
-        H[i] = x
+        Wf = 0.5 * (W[i] + W[i + 1])
+        H[i] = gc.face_thickness(z[i], z[i + 1] + H[i + 1], H[i + 1], Q[i] / Wf, ds, Gam, n)
     return H
 
 def steady_ice(z, W, ds, p, H0=None):
@@ -169,10 +148,10 @@ def reference_sia(z, W, ds, p, years=20000.0, dt_max=5.0, tol=1e-5, check=200, H
 # ---------------------------------------------------------------------------
 DEFAULTS = {
     "L": 30000.0, "N": 301,
-    "initProfile": "concave", "zHead": 2500.0, "noise": 0.0, "seed": 1,
+    "initProfile": "steady", "zHead": 2500.0, "noise": 0.0, "seed": 1,
     "shape": "constant", "peakUplift": 1e-3, "duration": 1e7, "pattern": "uniform", "ramp": 0.1,
-    "K": 2e-5, "m": 0.5, "nexp": 1.0, "G": 0.0, "ka": 5.7, "hack": 1.667, "W0": 300.0, "kw": 0.05,
-    "glacierOn": True, "elaBase": 1800.0, "elaAmp": 0.0, "elaPeriod": 1e5, "balGrad": 0.007,
+    "K": 3.2e-6, "m": 0.5, "nexp": 1.0, "G": 0.0, "ka": 5.7, "hack": 1.667, "W0": 300.0, "kw": 0.05,
+    "glacierOn": True, "elaBase": 1500.0, "elaAmp": 0.0, "elaPeriod": 1e5, "balGrad": 0.007,
     "accMax": 2.0, "abMax": 8.0, "fs": 0.5, "flow": 1.0, "Kg": 1e-4, "lexp": 1.0, "eroCap": 0.02,
     "Kq": 0.0, "iceIters": 30, "relax": 0.5, "smin": 1e-3, "iceTol": 0.01,
     "litho": None, "contrastK": 5.0, "contrastKg": 5.0,
@@ -184,6 +163,13 @@ def init_profile(p):
     s = np.arange(N) * ds
     if p["initProfile"] == "linear":
         z = p["zHead"] * (1 - s / L)
+    elif p["initProfile"] == "steady" and p["K"] > 0:
+        # fluvial steady state for the peak uplift: S_i = (U f_i / (K A_i^m))^(1/n), integrated from the outlet
+        A = hack_area(s, p["ka"], p["hack"])
+        z = np.zeros(N)
+        for i in range(N - 2, -1, -1):
+            f = gc.spatial_factor(s[i] / L, 0.5, p["pattern"], p["ramp"])
+            z[i] = z[i + 1] + ds * (p["peakUplift"] * f / (p["K"] * A[i] ** p["m"])) ** (1.0 / p["nexp"])
     else:  # concave: z ∝ (1 − s/L)^1.5 … a fluvial-looking profile
         z = p["zHead"] * (1 - s / L) ** 1.5
     if p["noise"] > 0:
@@ -276,12 +262,21 @@ def step(st, p, U_of_t, ELA_of_t, litho_fn):
     fluvial_step(st, p, iceMask)
     st["t"] += dt
 
+def prime_ice(st, p, ELA_of_t):
+    """Steady ice on the initial bed, no erosion (mirrors model.primeIce)."""
+    if not p["glacierOn"]:
+        return
+    pi = dict(p); pi["ela"] = ELA_of_t(st["t"])
+    ice = steady_ice(st["z"], st["W"], st["ds"], pi, st["H"])
+    st["H"] = ice["H"]; st["Us"] = ice["Us"]; st["q"] = ice["q"]; st["b"] = ice["b"]
+
 def run(params=None, nsteps=100, litho_spec=None):
     p = dict(DEFAULTS); p.update(params or {})
     st = make_state(p)
     U = gc.make_series({"shape": p["shape"], "peak": p["peakUplift"], "duration": p["duration"]})
     ELA = gc.make_series({"shape": "sine", "peak": -p["elaAmp"], "base": p["elaBase"], "period": p["elaPeriod"]})
     litho_fn = gc.litho_make(litho_spec) if litho_spec else None
+    prime_ice(st, p, ELA)
     for _ in range(nsteps):
         step(st, p, U, ELA, litho_fn)
     st["p"] = p
