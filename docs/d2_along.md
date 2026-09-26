@@ -117,3 +117,36 @@ invariant under pure uplift (material frame).
 - Sliding-based erosion: Hallet (1979); Humphrey & Raymond (1994); Herman et al. (2015).
 - Stream power: Whipple & Tucker (1999); implicit solver Braun & Willett (2013); erosion–deposition Yuan et al. (2019).
 - Hack's law: Hack (1957).
+
+## Cell-scale regularisations (2026-09-25)
+
+Exploring extreme scenarios exposed three cell-scale defects, each fixed mechanistically
+and exposed as a control with its equation on hover:
+
+1. **Outlet boundary.** The march started from zero ice at the outlet, so a glacier that
+   reached it thinned to nothing in one cell and `q/H` gave sliding of 10³ m/yr there. The
+   outlet is now free outflow: the ice leaves with the uniform-flow thickness for the local
+   bed slope, `Γ′ H^(n+2) S_bed^n = q`. (The Python reference SIA keeps `H = 0` at the outlet;
+   the gate beds never reach it.)
+2. **Terminus wedge.** `U_s = f_s q/H` diverges as `H → 0` at the last ice cell. Sliding now
+   uses `max(H, H_min)` with `H_min = 10 m` (asserted): ice thinner than that is too thin to
+   slide erosively. Shared law (`core/laws.js slidingSpeed`), so the d1 node column has it too.
+3. **Checkerboard.** In the reported scenario the bed near the outlet grew a cell-scale
+   sawtooth of a kilometre in 200 kyr: `E ∝ 1/H` with a face law that averages neighbouring
+   thicknesses lets odd and even nodes decouple once thin-ice cells erode at the cap. Fixes 1
+   and 2 removed the driver (the thin-ice cap-rate cells); with them in place the raw law no
+   longer grows the mode in that scenario. Glacial erosion is nevertheless applied through a
+   `[¼ ½ ¼]` footprint (an ice-thickness-scale patch rather than one cell), which annihilates
+   a two-cell mode exactly, as a safeguard. Off shows the raw law.
+
+Also: the "steady" initial profile caps its slope at 0.6 (a threshold hillslope). Where
+`U/(K A^m)` asks for more, the profile is at threshold, not in fluvial equilibrium, and the
+readout says over what length. Without the cap an erodibility of 3×10⁻⁷ at 2.8 mm/yr made a
+217 km high starting profile.
+
+Checked (`py/test_d2_along.py`): a glacier reaching the outlet has thickness and sliding
+varying by < 30 % over the last four cells; in the reported scenario the interior bed shows
+no checkerboard signature (sign of Δ²z flips at < 20 % of nodes, |Δ²z| < 100 m) with the
+footprint on or off; the footprint annihilates a two-cell mode; volume still closes; the
+capped profile never exceeds slope 0.6. What remains in that scenario is a ~75 m step
+400 m from the divide, where thin head ice erodes at the cap: a headwall, not a mode.

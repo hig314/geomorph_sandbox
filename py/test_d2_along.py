@@ -61,7 +61,9 @@ for i in range(len(z) - 1):
         Hf = 0.5 * (H[i] + H[i + 1]); Sf = (z[i] + H[i] - z[i + 1] - H[i + 1]) / ds; Wf = 0.5 * (W[i] + W[i + 1])
         resid.append(abs(Gam * Hf ** 5 * Sf ** 3 * Wf - Q[i]) / Q[i])
 check("march satisfies the face flux law", max(resid) < 1e-3, "max rel resid %.1e" % max(resid))
-check("sliding speed = fs q/H", np.allclose(inv["Us"][H > 0], 0.5 * inv["q"][H > 0] / H[H > 0]))
+thick = H > 10
+check("sliding speed = fs q/H (H > Hmin)", np.allclose(inv["Us"][thick], 0.5 * inv["q"][thick] / H[thick]))
+check("sliding regularised below Hmin", np.all(inv["Us"][(H > 0) & (H <= 10)] <= 0.5 * inv["q"][(H > 0) & (H <= 10)] / 10 + 1e-9))
 # Sliding fraction: more sliding → thinner ice, same flux
 i0 = d2.steady_ice(z, W, ds, {"ela": 1800.0, "balGrad": 0.007, "accMax": 2.0, "abMax": 8.0, "fs": 0.0, "iceIters": 200})
 check("sliding thins the glacier", inv["H"].max() < i0["H"].max())
@@ -81,7 +83,7 @@ check("fluvial steady slope–area n=1.5", np.max(np.abs(S / Sa - 1)) < 0.01 and
       "max rel %.1e, relief %.0f m, drift 8→12 Myr %.2f m" % (np.max(np.abs(S / Sa - 1)), z[0], np.max(np.abs(st2["z"] - z))))
 check("fluvial erosion = uplift at steady state", np.max(np.abs(st["Ef"][:-1] - 1e-3)) < 1e-9)
 # the "steady" initial profile is the fluvial steady state: it does not move under fluvial-only forcing
-ss = d2.run({"glacierOn": False, "initProfile": "steady", "dt": 1000.0, "N": 151}, nsteps=100)
+ss = d2.run({"glacierOn": False, "initProfile": "steady", "K": 2e-5, "dt": 1000.0, "N": 151}, nsteps=100)   # K high enough that no node hits the slope cap
 check("steady initial profile is stationary", np.max(np.abs(ss["z"] - d2.init_profile(ss["p"])[2])) < 1e-6, "max |Δz| %.2e m" % np.max(np.abs(ss["z"] - d2.init_profile(ss["p"])[2])))
 # mass closure with deposition: eroded − deposited = exported
 for G in (0.5, 1.5):
@@ -113,6 +115,38 @@ check("coupled volume closure", abs(r["upliftVol"] - r["eroFluv"] - r["eroGlac"]
 # quarrying: only where the bed is convex-up, and bounded by the cap
 rq = d2.run({"glacierOn": True, "Kg": 1e-4, "Kq": 1e-2, "dt": 500.0, "N": 151}, nsteps=100)
 check("quarrying bounded by cap", rq["Eg"].max() <= 0.02 + 1e-12 and not np.isnan(rq["z"]).any())
+
+# ---- 3b. Cell-scale regularisations ----
+# (a) glacier reaching the outlet: free-outflow boundary → no thickness/sliding spike at the last cells
+lo = d2.run({"elaBase": 300.0, "dt": 500.0, "N": 151}, nsteps=20)
+Hl, Ul = lo["H"], lo["Us"]
+check("glacier reaches the outlet", Hl[-1] > 1 and Hl[-2] > 1, "H outlet %.0f, H[-2] %.0f, H[-3] %.0f" % (Hl[-1], Hl[-2], Hl[-3]))
+check("no outlet spike: H and Us smooth over the last 4 cells", np.max(Hl[-4:]) < 1.3 * np.min(Hl[-4:]) and np.max(Ul[-4:]) < 1.3 * np.min(Ul[-4:]),
+      "Us last 4: %s" % ", ".join("%.1f" % v for v in Ul[-4:]))
+# (b) checkerboard: the reported scenario (extreme K, low ELA, strong erosion). Interior bed roughness
+#     (second difference, 3 nodes off each end — the fixed outlet makes a legitimate step) with the
+#     [¼ ½ ¼] footprint vs the raw law, which grows a cell-scale sawtooth.
+def checker(r):
+    """Checkerboard signature: fraction of interior ice-covered nodes where the bed's second
+    difference flips sign from one node to the next, and the largest |Δ²z| there."""
+    z = r["z"]; d = z[:-2] - 2 * z[1:-1] + z[2:]; m = r["H"][1:-1] > 1; m[:6] = False; m[-3:] = False
+    dd = d[m]
+    flips = np.sum(np.sign(dd[1:]) != np.sign(dd[:-1])) / max(len(dd) - 1, 1)
+    return flips, (np.max(np.abs(dd)) if len(dd) else 0.0)
+cb = {"L": 30000.0, "N": 301, "initProfile": "steady", "peakUplift": 2.8e-3, "K": 10 ** -6.5, "G": 0.6, "hack": 1.4,
+      "elaBase": 500.0, "elaAmp": 150.0, "elaPeriod": 1e5, "Kg": 10 ** -3.2, "dt": 500.0}
+for sm in (True, False):
+    fl, mx = checker(d2.run(dict(cb, eroSmooth=sm), nsteps=400))
+    check("no checkerboard in the reported scenario (footprint %s)" % ("on" if sm else "off"), fl < 0.2 and mx < 100.0,
+          "sign-flip fraction %.2f, max interior |Δ²z| %.0f m" % (fl, mx))
+# the footprint removes the two-cell mode of the erosion field exactly
+alt = np.array([1.0 if i % 2 else 0.0 for i in range(20)]); sm_ = alt.copy(); sm_[1:-1] = 0.25 * alt[:-2] + 0.5 * alt[1:-1] + 0.25 * alt[2:]
+check("[¼ ½ ¼] footprint annihilates a two-cell mode", np.allclose(sm_[1:-1], 0.5))
+r_fp = d2.run(dict(cb, eroSmooth=True), nsteps=100)
+check("footprint conserves volume", abs(r_fp["upliftVol"] - r_fp["eroFluv"] - r_fp["eroGlac"] - float(np.sum((r_fp["z"] - d2.init_profile(r_fp["p"])[2]) * r_fp["ds"] * r_fp["W"]))) < 1e-6 * r_fp["upliftVol"])
+# (c) steady profile slope cap
+sp = d2.make_state(dict(d2.DEFAULTS, K=1e-7, N=151))
+check("steady profile capped at the threshold slope", np.max(-np.diff(sp["z"]) / sp["ds"]) <= 0.6 + 1e-9, "max slope %.3f, head %.0f m" % (np.max(-np.diff(sp["z"]) / sp["ds"]), sp["z"][0]))
 
 # ---- 4. Lithology in the profile ----
 # A dike (persistent band in s) with contrast c: at fluvial steady state E = U everywhere,

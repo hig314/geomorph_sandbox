@@ -304,8 +304,12 @@ def face_thickness(zi, zs_down, H_down, qf, ds, Gamma, n):
             break
     return x
 
-def sliding_speed(q, H, fs):
-    return fs * q / H if H > 0 else 0.0
+def sliding_speed(q, H, fs, Hmin=0.0):
+    """U_s = f_s q / max(H, Hmin). Hmin regularises the terminus wedge: ice thinner than
+    Hmin is treated as too thin to slide erosively (q/H → ∞ as H → 0 otherwise)."""
+    if H <= 0:
+        return 0.0
+    return fs * q / (H if H > Hmin else Hmin)
 
 def abrasion(Kg, Us, l=1.0):
     return Kg * (Us if Us > 0 else 0.0) ** l

@@ -151,6 +151,7 @@
     { id: "lexp", label: "Sliding exponent l", type: "range", min: 1, max: 2, step: 0.25, val: 1, unit: "", group: "Process laws (as in d2_along)", asserted: true },
     { id: "fs", label: "Sliding fraction", type: "range", min: 0, max: 0.95, step: 0.05, val: 0.5, unit: "", group: "Process laws (as in d2_along)", asserted: true },
     { id: "flow", label: "Flow enhancement", type: "range", min: 0.2, max: 5, step: 0.1, val: 1, unit: "×", group: "Process laws (as in d2_along)", asserted: true },
+    { id: "Hmin", label: "Min sliding thickness", type: "range", min: 0, max: 50, step: 1, val: 10, unit: "m", group: "Process laws (as in d2_along)", asserted: true },
     { id: "contrastK", label: "Fluvial contrast", type: "range", min: 1, max: 20, step: 0.5, val: 5, unit: "×", group: "Lithology (as in d2_along)", asserted: true },
     { id: "contrastKg", label: "Glacial contrast", type: "range", min: 1, max: 20, step: 0.5, val: 5, unit: "×", group: "Lithology (as in d2_along)", asserted: true },
     { id: "lithoType", label: "Body type", type: "select", val: "none", options: [{ v: "none", t: "None" }, { v: "layer", t: "Horizontal layer" }, { v: "slab", t: "Dipping slab" }, { v: "dike", t: "Vertical dike" }], group: "Lithology (as in d2_along)", asserted: true },
@@ -288,7 +289,7 @@
       shape: state.shape, peakUplift: U.fromMmyr(state.peakUplift), duration: U.fromMyr(state.duration),
       elaBase: U.fromKm(state.elaBase), elaAmp: U.fromKm(state.elaAmp), elaPeriod: U.fromKyr(state.elaPeriod),
       K: Math.pow(10, state.KExp), m: state.m, nexp: state.nexp, Kg: Math.pow(10, state.KgExp), lexp: state.lexp, fs: state.fs, flow: state.flow,
-      eroCap: 0.02, contrastK: state.contrastK, contrastKg: state.contrastKg
+      eroCap: 0.02, Hmin: state.Hmin, contrastK: state.contrastK, contrastKg: state.contrastKg
     };
     var col = GS.d1.createNodeColumn({
       s: U.fromKm(state.s), z0: U.fromKm(state.z0), ucum0: +state.ucum0, zDown: U.fromKm(state.zDown), HDown: state.HDown,

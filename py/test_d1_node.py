@@ -35,7 +35,7 @@ check("face_thickness reproduces the march node by node", ok)
 
 # ---- 1. Consistency: with neighbours refreshed from the true 2D run every step, the node
 #         column reproduces the 2D node exactly (same laws, same order of operations). ----
-p = dict(d2.DEFAULTS); p.update({"N": 151, "dt": 500.0})
+p = dict(d2.DEFAULTS); p.update({"N": 151, "dt": 500.0, "eroSmooth": False})   # raw law: the column has no neighbours to smooth over
 st = d2.make_state(p)
 U = gc.make_series({"shape": p["shape"], "peak": p["peakUplift"], "duration": p["duration"]})
 ELA = gc.make_series({"shape": "sine", "peak": -p["elaAmp"], "base": p["elaBase"], "period": p["elaPeriod"]})

@@ -176,7 +176,7 @@
       var zsDown = frozen.zDown + frozen.HDown;
       if (frozen.Q > 0) {
         var H = laws.faceThickness(st.z, zsDown, frozen.HDown, frozen.Q / frozen.Wf, frozen.ds, Gam, n);
-        var Us = H > 0 ? laws.slidingSpeed(frozen.Q / frozen.W, H > 1e-9 ? H : 1e-9, p.fs) : 0;
+        var Us = laws.slidingSpeed(frozen.Q / frozen.W, H, p.fs, p.Hmin != null ? p.Hmin : 10);
         var Eg = H > 1 ? laws.capRate(laws.abrasion(p.Kg * fKg, Us, p.lexp), p.eroCap) : 0;
         st.z -= Eg * dt; st.H = H; st.Us = Us; st.Eg = Eg; st.Ef = 0; st.ecum += Eg * dt;
       } else {

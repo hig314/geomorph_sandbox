@@ -25,7 +25,7 @@
     K: 3.2e-6, m: 0.5, nexp: 1.0, G: 0, ka: 5.7, hack: 1.667, s0: 200, W0: 300, kw: 0.05,
     glacierOn: true, elaBase: 1500, elaAmp: 0, elaPeriod: 1e5, balGrad: 0.007,
     accMax: 2.0, abMax: 8.0, fs: 0.5, flow: 1.0, Kg: 1e-4, lexp: 1.0, eroCap: 0.02,
-    Kq: 0, iceIters: 30, relax: 0.5, smin: 1e-3, iceTol: 0.01,
+    Kq: 0, iceIters: 30, relax: 0.5, smin: 1e-3, iceTol: 0.01, Hmin: 10, eroSmooth: true, steadySlopeMax: 0.6,
     litho: null, contrastK: 5, contrastKg: 5,
     dt: 500
   };
@@ -45,8 +45,14 @@
 
   // Given Q_i leaving node i, march upstream from the outlet solving the face flux law for
   // H_i given H_{i+1} (laws.faceThickness: monotone → unique root).
-  function marchThickness(z, W, Q, ds, Gam, n, N, H) {
+  // Outlet: free outflow — ice leaves with the uniform-flow thickness for the local bed slope
+  // (a zero-thickness outlet forces a one-cell wedge and a sliding spike there).
+  function marchThickness(z, W, Q, ds, Gam, n, N, H, smin) {
     H[N - 1] = 0;
+    if (Q[N - 1] > 0) {
+      var Sb = (z[N - 2] - z[N - 1]) / ds; if (Sb < smin) Sb = smin;
+      H[N - 1] = Math.pow((Q[N - 1] / W[N - 1]) / (Gam * Math.pow(Sb, n)), 1 / (n + 2));
+    }
     for (var i = N - 2; i >= 0; i--) {
       if (Q[i] <= 0) { H[i] = 0; continue; }
       var Wf = 0.5 * (W[i] + W[i + 1]);
@@ -86,10 +92,13 @@
       fac[i] = forcing.spatialFactor(s / L, 0.5, p.pattern, p.ramp);
     }
     st.z[N - 1] = 0;
+    st.steadyCapped = 0; // nodes where the steady profile hit the threshold-slope cap
     if (p.initProfile === "steady" && p.K > 0) { // analytic fluvial steady state for U_peak·f(s): S = (U f / K A^m)^(1/n)
       var zz0 = 0;
       for (i = N - 2; i >= 0; i--) {
-        zz0 += ds * Math.pow(p.peakUplift * fac[i] / (p.K * Math.pow(st.A[i], p.m)), 1 / p.nexp);
+        var Ss = Math.pow(p.peakUplift * fac[i] / (p.K * Math.pow(st.A[i], p.m)), 1 / p.nexp);
+        if (Ss > p.steadySlopeMax) { Ss = p.steadySlopeMax; st.steadyCapped++; } // threshold-hillslope cap
+        zz0 += ds * Ss;
         st.z[i] = zz0 + (p.noise > 0 ? st.z[i] - (p.zHead * Math.pow(1 - st.s[i] / L, 1.5)) : 0);
       }
     }
@@ -107,7 +116,7 @@
       for (it = 1; it <= p.iceIters; it++) {
         for (k = 0; k < N; k++) bb[k] = laws.massBalance(zz[k] + H[k], ela, p.balGrad, p.accMax, p.abMax);
         routeFlux(bb, W, ds, Q, N);
-        marchThickness(zz, W, Q, ds, Gam, n, N, Hn);
+        marchThickness(zz, W, Q, ds, Gam, n, N, Hn, p.smin);
         var maxd = 0;
         for (k = 0; k < N; k++) {
           var d = Hn[k] - H[k];
@@ -122,7 +131,7 @@
       routeFlux(bb, W, ds, Q, N);
       for (k = 0; k < N; k++) {
         st.q[k] = Q[k] / W[k]; st.b[k] = bb[k];
-        st.Us[k] = H[k] > 0 ? laws.slidingSpeed(st.q[k], H[k] > 1e-9 ? H[k] : 1e-9, p.fs) : 0;
+        st.Us[k] = laws.slidingSpeed(st.q[k], H[k], p.fs, p.Hmin);
       }
     }
 
@@ -179,17 +188,24 @@
       // 2. glacier (steady) → mask + erosion
       if (p.glacierOn) {
         steadyIce(ELA(st.t));
-        var H = st.H, gv = 0;
+        var H = st.H, gv = 0, Eraw = h0; // reuse the fluvial scratch as raw-erosion buffer
         for (k = 0; k < N; k++) {
           iceMask[k] = H[k] > 1 ? 1 : 0;
-          var E = laws.capRate(laws.abrasion(p.Kg * fKg[k], st.Us[k], p.lexp), p.eroCap);
+          var E = laws.abrasion(p.Kg * fKg[k], st.Us[k], p.lexp);
           if (p.Kq > 0 && k > 0 && k < N - 1) {
             var conv = -(z[k - 1] - 2 * z[k] + z[k + 1]) / (ds * ds); // convex-up: z'' < 0
-            E = laws.capRate(E + laws.quarrying(p.Kq * fKg[k], st.Us[k], conv), p.eroCap);
+            E += laws.quarrying(p.Kq * fKg[k], st.Us[k], conv);
           }
-          if (!iceMask[k] || k === N - 1) E = 0;
-          st.Eg[k] = E;
-          z[k] -= E * dt; gv += E * dt * ds * st.W[k];
+          Eraw[k] = iceMask[k] ? E : 0;
+        }
+        for (k = 0; k < N; k++) {
+          // erosion footprint [¼ ½ ¼]: glacial erosion acts over an ice-thickness-scale patch,
+          // not one cell; it also removes the two-cell (checkerboard) mode of the E ∝ 1/H feedback.
+          var Es = (p.eroSmooth && k > 0 && k < N - 1) ? 0.25 * Eraw[k - 1] + 0.5 * Eraw[k] + 0.25 * Eraw[k + 1] : Eraw[k];
+          Es = laws.capRate(Es, p.eroCap);
+          if (k === N - 1) Es = 0;
+          st.Eg[k] = Es;
+          z[k] -= Es * dt; gv += Es * dt * ds * st.W[k];
         }
         st.eroGlac += gv;
       } else {

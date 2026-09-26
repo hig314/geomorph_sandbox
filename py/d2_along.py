@@ -65,11 +65,17 @@ def route_flux(b, W, ds):
         Q[i] = acc
     return Q
 
-def march_thickness(z, W, Q, ds, Gam, n, N):
+def march_thickness(z, W, Q, ds, Gam, n, N, smin=1e-3):
     """Given the volume flux Q_i leaving node i (m³/yr), march upstream from the outlet
     solving the face flux law for H_i given H_{i+1} (core face_thickness: monotone → unique
-    root). Nodes whose outgoing flux is zero carry no ice (terminus and ice-free ground)."""
+    root). Nodes whose outgoing flux is zero carry no ice (terminus and ice-free ground).
+    Outlet: free outflow — the ice leaves with the uniform-flow thickness for the local bed
+    slope, Γ H^(n+2) S_b^n = q (a zero-thickness outlet forces a one-cell wedge and a
+    sliding spike there)."""
     H = np.zeros(N)
+    if Q[N - 1] > 0:
+        Sb = max((z[N - 2] - z[N - 1]) / ds, smin)
+        H[N - 1] = ((Q[N - 1] / W[N - 1]) / (Gam * Sb ** n)) ** (1.0 / (n + 2))
     for i in range(N - 2, -1, -1):
         if Q[i] <= 0.0:
             H[i] = 0.0
@@ -90,7 +96,7 @@ def steady_ice(z, W, ds, p, H0=None):
         zs = z + H
         b = np.array([gc.mass_balance(v, p["ela"], p["balGrad"], p.get("accMax"), p.get("abMax")) for v in zs])
         Q = route_flux(b, W, ds)
-        Hn = march_thickness(z, W, Q, ds, Gam, n, N)
+        Hn = march_thickness(z, W, Q, ds, Gam, n, N, smin)
         dH = Hn - H
         H = H + relax * dH
         if np.max(np.abs(dH)) < tol:
@@ -99,7 +105,8 @@ def steady_ice(z, W, ds, p, H0=None):
     b = np.array([gc.mass_balance(v, p["ela"], p["balGrad"], p.get("accMax"), p.get("abMax")) for v in zs])
     Q = route_flux(b, W, ds); q = Q / W
     S = surface_slope(zs, ds, smin)
-    Us = np.where(H > 0, fs * q / np.maximum(H, 1e-9), 0.0)
+    Hmin = p.get("Hmin", 10.0)
+    Us = np.where(H > 0, fs * q / np.maximum(H, Hmin), 0.0)
     return {"H": H, "q": q, "Q": Q, "Us": Us, "b": b, "S": S, "iters": it}
 
 # ---------------------------------------------------------------------------
@@ -153,7 +160,8 @@ DEFAULTS = {
     "K": 3.2e-6, "m": 0.5, "nexp": 1.0, "G": 0.0, "ka": 5.7, "hack": 1.667, "W0": 300.0, "kw": 0.05,
     "glacierOn": True, "elaBase": 1500.0, "elaAmp": 0.0, "elaPeriod": 1e5, "balGrad": 0.007,
     "accMax": 2.0, "abMax": 8.0, "fs": 0.5, "flow": 1.0, "Kg": 1e-4, "lexp": 1.0, "eroCap": 0.02,
-    "Kq": 0.0, "iceIters": 30, "relax": 0.5, "smin": 1e-3, "iceTol": 0.01,
+    "Kq": 0.0, "iceIters": 30, "relax": 0.5, "smin": 1e-3, "iceTol": 0.01, "Hmin": 10.0, "eroSmooth": True,
+    "steadySlopeMax": 0.6,
     "litho": None, "contrastK": 5.0, "contrastKg": 5.0,
     "dt": 500.0,
 }
@@ -169,7 +177,8 @@ def init_profile(p):
         z = np.zeros(N)
         for i in range(N - 2, -1, -1):
             f = gc.spatial_factor(s[i] / L, 0.5, p["pattern"], p["ramp"])
-            z[i] = z[i + 1] + ds * (p["peakUplift"] * f / (p["K"] * A[i] ** p["m"])) ** (1.0 / p["nexp"])
+            S = (p["peakUplift"] * f / (p["K"] * A[i] ** p["m"])) ** (1.0 / p["nexp"])
+            z[i] = z[i + 1] + ds * min(S, p["steadySlopeMax"])   # threshold-hillslope cap
     else:  # concave: z ∝ (1 − s/L)^1.5 … a fluvial-looking profile
         z = p["zHead"] * (1 - s / L) ** 1.5
     if p["noise"] > 0:
@@ -246,13 +255,18 @@ def step(st, p, U_of_t, ELA_of_t, litho_fn):
         ice = steady_ice(z, st["W"], ds, pi, st["H"])
         H = ice["H"]; Us = ice["Us"]
         iceMask = H > 1.0
-        E = np.array([gc.cap_rate(gc.abrasion(p["Kg"] * st["fKg"][i], Us[i], p["lexp"]), p["eroCap"]) for i in range(N)])
+        E = np.array([gc.abrasion(p["Kg"] * st["fKg"][i], Us[i], p["lexp"]) for i in range(N)])
         if p["Kq"] > 0:
-            curv = np.zeros(N); curv[1:-1] = (z[:-2] - 2 * z[1:-1] + z[2:]) / (ds * ds)   # >0 convex-up? sign below
+            curv = np.zeros(N); curv[1:-1] = (z[:-2] - 2 * z[1:-1] + z[2:]) / (ds * ds)
             conv = -curv                                                               # convex up: z'' < 0
             E = E + np.array([gc.quarrying(p["Kq"] * st["fKg"][i], Us[i], conv[i]) for i in range(N)])
-            E = np.minimum(E, p["eroCap"])
-        E[~iceMask] = 0.0; E[-1] = 0.0
+        E[~iceMask] = 0.0
+        if p["eroSmooth"]:
+            # erosion footprint [¼ ½ ¼]: glacial erosion acts over an ice-thickness-scale patch,
+            # not one cell; this also removes the two-cell (checkerboard) mode of the E ∝ 1/H
+            # feedback exactly. Ends keep their own value.
+            Es = E.copy(); Es[1:-1] = 0.25 * E[:-2] + 0.5 * E[1:-1] + 0.25 * E[2:]; E = Es
+        E = np.minimum(E, p["eroCap"]); E[-1] = 0.0
         z -= E * dt
         st["H"] = H; st["Us"] = Us; st["Eg"] = E; st["q"] = ice["q"]; st["b"] = ice["b"]
         st["eroGlac"] += float(np.sum(E * dt * ds * st["W"]))

@@ -133,8 +133,13 @@
     }
     return x;
   }
-  // Sliding speed as a fraction fs of the depth-averaged speed q/H (m/yr).
-  function slidingSpeed(q, H, fs) { return H > 0 ? fs * q / H : 0; }
+  // Sliding speed as a fraction fs of the depth-averaged speed q/H (m/yr). Hmin regularises
+  // the terminus wedge: ice thinner than Hmin is too thin to slide erosively (q/H → ∞ as H → 0).
+  function slidingSpeed(q, H, fs, Hmin) {
+    if (H <= 0) return 0;
+    Hmin = Hmin || 0;
+    return fs * q / (H > Hmin ? H : Hmin);
+  }
   // Abrasion E = K_g U_s^l (m/yr).
   function abrasion(Kg, Us, l) { return Kg * Math.pow(Us > 0 ? Us : 0, l != null ? l : 1); }
   // Quarrying ∝ sliding × bed convexity (curvature > 0 = convex up), the knob for

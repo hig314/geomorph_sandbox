@@ -35,7 +35,7 @@ thickens the ice and slows sliding, a self-limiting overdeepening. What it canno
 see its neighbours erode, its glacier advance or retreat, or a glacial cycle at all.
 
 Per step the column mirrors `d2_along.step` for one node: lithology → uplift → if `Q > 0`,
-`H` from `faceThickness` (the same monotone root the profile's march uses), `U_s = f_s (Q/W)/H`,
+`H` from `faceThickness` (the same monotone root the profile's march uses), `U_s = f_s (Q/W)/max(H, H_min)`,
 `E_g = K_g f_Kg U_s^l` capped; else the implicit Yuan node against `z_down`.
 
 ## Validation

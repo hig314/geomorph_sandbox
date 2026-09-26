@@ -45,7 +45,7 @@ def make_node_column(spec):
         zsDown = frozen["zDown"] + frozen["HDown"]
         if frozen["Q"] > 0:
             H = gc.face_thickness(st["z"], zsDown, frozen["HDown"], frozen["Q"] / frozen["Wf"], frozen["ds"], Gam, n)
-            Us = gc.sliding_speed(frozen["Q"] / frozen["W"], max(H, 1e-9), p["fs"]) if H > 0 else 0.0
+            Us = gc.sliding_speed(frozen["Q"] / frozen["W"], H, p["fs"], p.get("Hmin", 10.0)) if H > 0 else 0.0
             Eg = gc.cap_rate(gc.abrasion(p["Kg"] * fKg, Us, p["lexp"]), p["eroCap"]) if H > 1.0 else 0.0
             st["z"] -= Eg * dt; st["H"] = H; st["Us"] = Us; st["Eg"] = Eg; st["Ef"] = 0.0
             st["ecum"] += Eg * dt
