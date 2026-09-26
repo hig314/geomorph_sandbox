@@ -1,5 +1,7 @@
 # geomorph_sandbox
 
+**Live:** <https://hig314.github.io/geomorph_sandbox/> (GitHub Pages, built from `main`).
+
 A browser sandbox for illustrating geomorphic hypotheses, built as parallel models in one,
 two and three spatial dimensions. See `DESIGN.md` for the purpose and plan, `docs/core.md`
 for the shared modules and unit convention.
