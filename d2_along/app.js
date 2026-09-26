@@ -144,8 +144,14 @@
   var pLink = P.make(charts, { title: "Isolated column — click the profile to pick a node", yLabel: "z (km)", color: C.Us, showX: true, xLabel: "time since click (kyr)", method: m.pLink });
   var sKm = function (d) { return U.toKm(d.s); };
   var link = null; // { i, column, series: [{t, z2d, z1d, H2d, H1d}] }
+  // Axis ratchet: a panel's range may grow but never shrink during a run (cleared on Reset),
+  // so a transient spike (e.g. at the glacier front) does not make the axes jump.
+  var seen = {};
+  function ratchetMax(key, v) { if (seen[key] == null || v > seen[key]) seen[key] = v; return seen[key]; }
+  function ratchetMin(key, v) { if (seen[key] == null || v < seen[key]) seen[key] = v; return seen[key]; }
 
   function linkNode(i) {
+    delete seen.linkLo; delete seen.linkHi;
     var spec = model.nodeSpec(i);
     link = { i: spec.i, column: GS.d1.createNodeColumn(spec), series: [] };
     recordLink();
@@ -176,9 +182,9 @@
     var rows = [];
     for (i = 0; i < N; i++) rows.push({ s: st.s[i], z: st.z[i], zs: st.z[i] + st.H[i], H: st.H[i], Us: st.Us[i], Ef: st.Ef[i], Eg: st.Eg[i], r: st.r[i], ela: model.ELA(st.t), u: model.U(st.t) });
     var Lkm = U.toKm(st.p.L);
-    var zMax = d3.max(rows, function (d) { return U.toKm(Math.max(d.zs, state.glacierOn ? d.ela : 0)); }) || 1;
-    var eMax = d3.max(rows, function (d) { return U.toMmyr(Math.max(d.Ef, d.Eg, d.u)); }) || 0.1;
-    var usMax = d3.max(rows, function (d) { return d.Us; }) || 1;
+    var zMax = ratchetMax("z", d3.max(rows, function (d) { return U.toKm(Math.max(d.zs, state.glacierOn ? d.ela : 0)); }) || 1);
+    var eMax = ratchetMax("e", d3.max(rows, function (d) { return U.toMmyr(Math.max(d.Ef, d.Eg, d.u)); }) || 0.1);
+    var usMax = ratchetMax("us", d3.max(rows, function (d) { return d.Us; }) || 1);
     [pProfile, pRates, pIce].forEach(function (pn) { pn.x.domain([0, Lkm]); P.clear(pn); });
     pProfile.y.domain([0, zMax * 1.05]); pRates.y.domain([0, eMax * 1.1]); pIce.y.domain([0, usMax * 1.1]);
     // profile
@@ -206,7 +212,8 @@
     if (link && link.series.length > 1) {
       var ls = link.series, tk = function (d) { return U.toKyr(d.t); };
       pLink.x.domain([0, Math.max(U.toKyr(ls[ls.length - 1].t), 1)]);
-      var lo = d3.min(ls, function (d) { return U.toKm(Math.min(d.z2d, d.z1d)); }), hi = d3.max(ls, function (d) { return U.toKm(Math.max(d.z2d + d.H2d, d.z1d + d.H1d)); });
+      var lo = ratchetMin("linkLo", d3.min(ls, function (d) { return U.toKm(Math.min(d.z2d, d.z1d)); }));
+      var hi = ratchetMax("linkHi", d3.max(ls, function (d) { return U.toKm(Math.max(d.z2d + d.H2d, d.z1d + d.H1d)); }));
       pLink.y.domain([lo - 0.02, hi + 0.02]);
       P.line(pLink, "ice2d", ls, function (d) { return U.toKm(d.z2d + d.H2d); }, C.ice, false, tk);
       P.line(pLink, "ice1d", ls, function (d) { return U.toKm(d.z1d + d.H1d); }, C.ice, true, tk);
@@ -227,7 +234,7 @@
     var h = st.history, tMyr = function (d) { return U.toMyr(d.t); };
     P.clear(pHist);
     pHist.x.domain([0, Math.max(U.toMyr(h[h.length - 1].t), 0.01)]);
-    var rMax = d3.max(h, function (d) { return U.toKm(d.relief); }) || 1, vMax = d3.max(h, function (d) { return d.iceVol; }) || 1;
+    var rMax = ratchetMax("relief", d3.max(h, function (d) { return U.toKm(d.relief); }) || 1), vMax = ratchetMax("vol", d3.max(h, function (d) { return d.iceVol; }) || 1);
     pHist.y.domain([0, rMax * 1.1]);
     P.line(pHist, "relief", h, function (d) { return U.toKm(d.relief); }, C.relief, false, tMyr);
     P.line(pHist, "vol", h, function (d) { return rMax * 1.1 * d.iceVol / (vMax * 1.1); }, C.vol, true, tMyr);
@@ -254,7 +261,7 @@
     d3.select("#playPause").text(playing ? "❚❚ Pause" : "▶ Play");
     if (playing) raf = requestAnimationFrame(frame); else if (raf) cancelAnimationFrame(raf);
   }
-  function reset() { setPlaying(false); link = null; build(); draw(); url.write(state); }
+  function reset() { setPlaying(false); link = null; seen = {}; build(); draw(); url.write(state); }
   d3.select("#playPause").on("click", function () { setPlaying(!playing); });
   d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); stepLink(state.speed); draw(); });
   // click tool on the profile: pick the node under the pointer
