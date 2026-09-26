@@ -86,6 +86,17 @@
     return { refresh: refresh, inputs: inputs };
   };
 
+  // Hold a box's height at the tallest it has been (grow-only), so a readout whose text
+  // length changes step to step does not bounce the controls below it. holdHeight(sel, true)
+  // releases the hold (e.g. on Reset).
+  GS.ui.holdHeight = function (sel, release) {
+    sel.each(function () {
+      if (release) { this.style.minHeight = ""; this._held = 0; return; }
+      var h = this.offsetHeight;
+      if (!this._held || h > this._held) { this._held = h; this.style.minHeight = h + "px"; }
+    });
+  };
+
   // Control specs → urlState specs.
   GS.ui.toUrlSpecs = function (specs) {
     return specs.map(function (c) {

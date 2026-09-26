@@ -331,6 +331,7 @@
 
   function render() {
     if (state.scenario === "reservoir") renderReservoir(); else if (state.scenario === "node") renderNode(); else renderColumns();
+    GS.ui.holdHeight(d3.select("#readout"));
     url.write(state);
   }
 
@@ -341,7 +342,7 @@
               : state.scenario === "node" ? [scenarioSpec].concat(common, nodeSpecs)
               : [scenarioSpec].concat(common, landscape, body, glacier);
     GS.ui.buildControls(root, specs, state, function (id) {
-      if (id === "scenario") { buildSidebar(); buildPanels(); }
+      if (id === "scenario") { GS.ui.holdHeight(d3.select("#readout"), true); buildSidebar(); buildPanels(); }
       render();
     });
   }

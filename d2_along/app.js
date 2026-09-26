@@ -295,6 +295,7 @@
       "  ·  ice volume " + (dg.iceVol / 1e9).toFixed(2) + " km³  ·  ice iters " + st.iceIters +
       (st.steadyCapped > 0 ? "  ·  <span style='color:#b8860b'>steady profile at threshold slope over " + U.fmtLen(st.steadyCapped * st.ds) + " (K too low for U: not in fluvial equilibrium there)</span>" : "") +
       "  ·  mass closure " + (dg.upliftVol > 0 ? (dg.closure / dg.upliftVol).toExponential(1) : "—"));
+    GS.ui.holdHeight(d3.select("#readout")); GS.ui.holdHeight(d3.select("#linkReadout"));
   }
 
   // ---- Loop --------------------------------------------------------------
@@ -311,7 +312,7 @@
     d3.select("#playPause").text(playing ? "❚❚ Pause" : "▶ Play");
     if (playing) raf = requestAnimationFrame(frame); else if (raf) cancelAnimationFrame(raf);
   }
-  function reset() { setPlaying(false); link = null; seen = {}; build(); draw(); url.write(state); }
+  function reset() { setPlaying(false); link = null; seen = {}; GS.ui.holdHeight(d3.selectAll("#readout, #linkReadout"), true); build(); draw(); url.write(state); }
   d3.select("#playPause").on("click", function () { setPlaying(!playing); });
   d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); stepLink(state.speed); draw(); });
   // click tool on the profile: pick the node under the pointer
