@@ -26,11 +26,15 @@ nav.tiers a.todo { color: #aaa; pointer-events: none; }
 
 .layout {
   display: flex; gap: 24px; align-items: flex-start;
-  padding: 12px 24px 40px; max-width: 1180px; margin: 0 auto; flex-wrap: wrap;
+  padding: 12px 24px 40px; max-width: 1600px; margin: 0 auto; flex-wrap: wrap;
 }
+header { max-width: 1600px; }
+.chart-row { display: flex; gap: 6px; align-items: flex-start; }
+.chart-row > .main { flex: 2 1 0; min-width: 0; }
+.chart-row > .side { flex: 1 1 0; min-width: 0; border-left: 1px dashed var(--line); }
 #charts {
   background: var(--panel-bg); border: 1px solid var(--line); border-radius: 8px;
-  padding: 8px 8px 4px; flex: 1 1 760px;
+  padding: 8px 8px 4px; flex: 1 1 900px;
   position: sticky; top: 12px; align-self: flex-start; /* stays in view while the sidebar scrolls */
 }
 .panel { display: block; width: 100%; height: auto; }

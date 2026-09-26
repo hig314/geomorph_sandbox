@@ -2,11 +2,18 @@
 d1_node.py — Python mirror of d1/model.js createNodeColumn(): one node of the
 along-valley profile run as an isolated column.
 
-Everything the profile computed from ADJACENCY is frozen at its click-time value and
-asserted: the downstream bed z_down and ice thickness H_down (so the downstream surface),
-the ice volume flux Q leaving the node, the drainage area A and widths W, W_f. Shared
-FORCING keeps running: U(t) (× the node's spatial factor) and ELA(t) — though ELA acts
-on a node only through the flux, which is frozen, so the isolated column is blind to it.
+Everything the profile computed from ADJACENCY is frozen at its isolation-time value and
+asserted: the downstream neighbour keeps doing what it was doing — it uplifts with the shared
+forcing and erodes at its isolation-time rate e_down, so z_down(t) = z_down(t0) + ΔU_cum −
+e_down·(t − t0) (flag extrapolate; False supplies z_down directly) — its ice thickness H_down,
+the ice volume flux Q leaving the node, the drainage area A and widths W, W_f. Shared FORCING
+keeps running: U(t) (× the node's spatial factor) and ELA(t) — though ELA acts on a node only
+through the flux, which is frozen, so the isolated column is blind to it. For a profile in
+steady state every isolated column stays identical to its node; divergence is adjacency
+changing (neighbours speeding up or slowing down, a terminus moving over the node).
+Two rejected variants: freezing z_down itself (correct in steady state, but a receiver that
+speeds up or slows down is missed); letting z_down uplift without eroding (an infinitely
+hard dam: the node erodes its slope away and then rides uplift with no erosion).
 LOCAL laws and feedbacks remain: lithology in the material frame, slope against the
 frozen receiver, thickness from the face flux law against the frozen downstream surface.
 
@@ -30,10 +37,12 @@ def make_node_column(spec):
     st = {"t": spec["t0"], "z": spec["z0"], "ucum": spec["ucum0"], "H": 0.0, "Us": 0.0, "Ef": 0.0, "Eg": 0.0, "r": 0.0,
           "ecum": 0.0, "series": []}
     frozen = {k: spec[k] for k in ("zDown", "HDown", "Q", "A", "W", "Wf", "ds", "fac", "s")}
+    frozen["extrapolate"] = spec.get("extrapolate", True); frozen["eDown"] = spec.get("eDown", 0.0)
 
     def record():
         st["series"].append({"t": st["t"], "z": st["z"], "H": st["H"], "Us": st["Us"], "Ef": st["Ef"], "Eg": st["Eg"], "r": st["r"],
-                             "u": U(st["t"]) * frozen["fac"], "ela": ELA(st["t"])})
+                             "u": U(st["t"]) * frozen["fac"], "ela": ELA(st["t"]),
+                             "zDown": st.get("zDown", frozen["zDown"])})
 
     def step():
         dt = spec["dt"]
@@ -42,7 +51,8 @@ def make_node_column(spec):
         fK = gc.erodibility_factor(r, p["contrastK"]); fKg = gc.erodibility_factor(r, p["contrastKg"])
         du = U(st["t"]) * frozen["fac"] * dt
         st["z"] += du; st["ucum"] += du
-        zsDown = frozen["zDown"] + frozen["HDown"]
+        zDown = frozen["zDown"] + (((st["ucum"] - spec["ucum0"]) - frozen["eDown"] * (st["t"] + dt - spec["t0"])) if frozen["extrapolate"] else 0.0)
+        zsDown = zDown + frozen["HDown"]
         H = 0.0; Us = 0.0; Eg = 0.0
         if frozen["Q"] > 0:
             H = gc.face_thickness(st["z"], zsDown, frozen["HDown"], frozen["Q"] / frozen["Wf"], frozen["ds"], Gam, n)
@@ -55,9 +65,9 @@ def make_node_column(spec):
         if w > 0.0:
             h0 = st["z"]
             Kp = p["K"] * fK * w * frozen["A"] ** p["m"]
-            nh = gc.yuan_node(h0, h0, frozen["zDown"], Kp, dt, frozen["ds"], 0.0, p["nexp"], False)
+            nh = gc.yuan_node(h0, h0, zDown, Kp, dt, frozen["ds"], 0.0, p["nexp"], False)
             st["z"] = nh; Ef = (h0 - nh) / dt; st["ecum"] += h0 - nh
-        st["H"] = H; st["Us"] = Us; st["Eg"] = Eg; st["Ef"] = Ef
+        st["H"] = H; st["Us"] = Us; st["Eg"] = Eg; st["Ef"] = Ef; st["zDown"] = zDown
         st["t"] += dt
 
     record()

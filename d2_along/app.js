@@ -109,11 +109,11 @@
       "How fast the ice slides over its bed at every point. This is what erodes: glacial erosion is proportional to it. It rises down the accumulation area as flux grows, peaks where the ice is fast and not too thick, and falls to zero at the terminus.", null, "computed"),
     pHist: M("History", ["relief = max z − min z;  ice volume = Σ H W ds"],
       "How the run has evolved so far: total relief (solid) and ice volume (dashed, scaled to the panel). Mass closure (uplift − erosion − Δvolume) is in the readout.", null, "computed"),
-    pLink: M("Isolated column at the selected node  (d1 ↔ d2 link)", [
-        "frozen at the click: z<sub>down</sub>, H<sub>down</sub>, Q, A, W, W<sub>f</sub>, ds",
-        "running: U(t)·f(s), lithology r(z − U<sub>cum</sub>), slope against z<sub>down</sub>, H from the face law against z<sub>down</sub> + H<sub>down</sub>",
+    pLink: M("Isolated column at the hovered node  (d1 ↔ d2 link)", [
+        "frozen at isolation: the neighbour's erosion rate (z<sub>down</sub> keeps uplifting and eroding as it was), H<sub>down</sub>, Q, A, W, W<sub>f</sub>, ds",
+        "running: U(t)·f(s), lithology r(z − U<sub>cum</sub>), slope against z<sub>down</sub>(t), H from the face law against z<sub>down</sub>(t) + H<sub>down</sub>",
         "divergence = z<sub>2D</sub>(t) − z<sub>1D</sub>(t)"],
-      "Click the long profile to pick a node. Solid: the node's real elevation as the profile runs. Dashed: the same node run as an isolated d1 column with the same laws, where everything that came from its neighbours is held at the click-time value and badged asserted. The two curves start together; how far and how fast they part is the answer to “how much behaviour arises from the extra dimension”. The ELA acts on a node only through the ice flux, which is adjacency, so the isolated column is blind to glacial cycles. “Open in d1” shows this column standalone with its constants as sliders.",
+      "Every node of the profile is also run as an isolated d1 column, in lockstep, from the moment of isolation (Reset, a parameter change, or the Re-isolate button). Move the mouse across the long profile and this panel shows, for the node under the pointer, its real elevation as the profile runs (solid) and the same node isolated with the same laws, everything from its neighbours frozen at the isolation time (dashed). Click to pin a node. How far and how fast the curves part is the answer to “how much behaviour arises from the extra dimension”. Two things to expect: for a profile in steady state every isolated column stays identical to its node (the receiver keeps uplifting and eroding as it was), so any gap is adjacency changing — neighbours speeding up or slowing down, or a terminus moving over the node; and the ELA reaches a node only through the ice flux, which is frozen, so the isolated column is blind to glacial cycles. “Open in d1” shows the column standalone with its constants as sliders.",
       "py/test_d1_node.py: the column reproduces the 2D node exactly when its adjacency is refreshed every step.", "computed")
   };
 
@@ -184,45 +184,85 @@
 
   // ---- Panels --------------------------------------------------------------
   var P = GS.ui.panels({ width: 820, height: 170 });
+  var PS = GS.ui.panels({ width: 420, height: 170, margin: { top: 18, right: 56, bottom: 8, left: 52 } });
   var charts = d3.select("#charts");
-  var pProfile = P.make(charts, { title: "Long profile", yLabel: "z (km)", color: C.bed, method: m.pProfile });
+  var topRow = charts.append("div").attr("class", "chart-row");
+  var mainCol = topRow.append("div").attr("class", "main"), sideCol = topRow.append("div").attr("class", "side");
+  var pProfile = P.make(mainCol, { title: "Long profile  (hover: isolate that node →)", yLabel: "z (km)", color: C.bed, method: m.pProfile });
+  var pLink = PS.make(sideCol, { title: "Isolated vs profile at the hovered node", yLabel: "z (km)", color: C.Us, showX: true, xLabel: "time since isolation (kyr)", method: m.pLink });
   var pRates = P.make(charts, { title: "Erosion rates  vs  uplift", yLabel: "rate (mm/yr)", color: C.glac, method: m.pRates });
   var pIce = P.make(charts, { title: "Sliding speed", yLabel: "U_s (m/yr)", color: C.Us, showX: true, xLabel: "distance from divide s (km)", method: m.pIce });
   var pHist = P.make(charts, { title: "History", yLabel: "relief (km)", color: C.relief, showX: true, xLabel: "time (Myr)", method: m.pHist });
-  var pLink = P.make(charts, { title: "Isolated column — click the profile to pick a node", yLabel: "z (km)", color: C.Us, showX: true, xLabel: "time since click (kyr)", method: m.pLink });
   var sKm = function (d) { return U.toKm(d.s); };
-  var link = null; // { i, column, series: [{t, z2d, z1d, H2d, H1d}] }
+  // ---- Isolated columns for EVERY node, stepped in lockstep with the profile ----
+  // iso = { t0, cols[], rec: [{t, z2d: Float32Array, z1d, H2d, H1d}] }. Hover the profile to see
+  // the hovered node's pair of curves; click to pin; "Re-isolate" re-bases all columns on the
+  // current state. Memory: 4 arrays of N per record; records thin by 2 beyond 3000.
+  var iso = null, hoverNode = -1, pinnedNode = -1;
   // Axis ratchet: a panel's range may grow but never shrink during a run (cleared on Reset),
   // so a transient spike (e.g. at the glacier front) does not make the axes jump.
   var seen = {};
   function ratchetMax(key, v) { if (seen[key] == null || v > seen[key]) seen[key] = v; return seen[key]; }
   function ratchetMin(key, v) { if (seen[key] == null || v < seen[key]) seen[key] = v; return seen[key]; }
 
-  function linkNode(i) {
-    delete seen.linkLo; delete seen.linkHi;
-    var spec = model.nodeSpec(i);
-    link = { i: spec.i, column: GS.d1.createNodeColumn(spec), series: [] };
-    recordLink();
+  function isolateAll() {
+    var st = model.state, N = st.N, cols = [];
+    for (var i = 0; i < N - 1; i++) cols.push(GS.d1.createNodeColumn(model.nodeSpec(i)));
+    iso = { t0: st.t, cols: cols, rec: [] };
+    recordIso();
   }
-  function recordLink() {
-    if (!link) return;
-    var st = model.state, c = link.column.state, i = link.i;
-    link.series.push({ t: st.t - link.column.spec.t0, z2d: st.z[i], z1d: c.z, H2d: st.H[i], H1d: c.H, E2d: st.Ef[i] + st.Eg[i], E1d: c.Ef + c.Eg });
+  function recordIso() {
+    if (!iso) return;
+    var st = model.state, N = st.N;
+    var r = { t: st.t - iso.t0, z2d: new Float32Array(N), z1d: new Float32Array(N), H2d: new Float32Array(N), H1d: new Float32Array(N) };
+    for (var i = 0; i < N - 1; i++) {
+      var c = iso.cols[i].state;
+      r.z2d[i] = st.z[i]; r.z1d[i] = c.z; r.H2d[i] = st.H[i]; r.H1d[i] = c.H;
+    }
+    iso.rec.push(r);
+    if (iso.rec.length > 3000) iso.rec = iso.rec.filter(function (_, k) { return k % 2 === 0; });
   }
-  function stepLink(nsteps) {
-    if (!link) return;
-    for (var k = 0; k < nsteps; k++) link.column.step();
-    recordLink();
+  function stepIso(nsteps) {
+    if (!iso) return;
+    for (var k = 0; k < nsteps; k++) for (var i = 0; i < iso.cols.length; i++) iso.cols[i].step();
+    recordIso();
   }
-  function d1Link() {
-    if (!link) return "#";
-    var sp = link.column.spec, q = new URLSearchParams();
+  function shownNode() { return hoverNode >= 0 ? hoverNode : pinnedNode; }
+  function d1Link(i) {
+    if (!iso || i < 0) return "#";
+    var sp = iso.cols[i].spec, q = new URLSearchParams();
     q.set("scenario", "node");
     ["shape", "peakUplift", "duration", "KExp", "m", "nexp", "KgExp", "lexp", "fs", "flow", "Hmin", "Hf", "phiSub", "contrastK", "contrastKg", "lithoType", "lithoTop", "lithoThick", "lithoPos", "L", "elaBase", "elaAmp", "elaPeriod", "dt"].forEach(function (id) { q.set(id, state[id]); });
-    q.set("s", U.toKm(sp.s).toFixed(3)); q.set("z0", U.toKm(sp.z0).toFixed(4)); q.set("zDown", U.toKm(sp.zDown).toFixed(4)); q.set("HDown", sp.HDown.toFixed(2));
+    q.set("s", U.toKm(sp.s).toFixed(3)); q.set("z0", U.toKm(sp.z0).toFixed(4)); q.set("zDown", U.toKm(sp.zDown).toFixed(4)); q.set("HDown", sp.HDown.toFixed(2)); q.set("eDown", U.toMmyr(sp.eDown).toFixed(3));
     q.set("QExp", sp.Q > 0 ? Math.log10(sp.Q).toFixed(3) : 0); q.set("AExp", Math.log10(sp.A / 1e6).toFixed(3)); q.set("W", sp.W.toFixed(1)); q.set("Wf", sp.Wf.toFixed(1));
     q.set("ds", sp.ds.toFixed(1)); q.set("fac", sp.fac.toFixed(4)); q.set("ucum0", sp.ucum0.toFixed(3)); q.set("t0", sp.t0.toFixed(0)); q.set("runKyr", 500);
     return "../d1/index.html?" + q.toString();
+  }
+  function drawLinkPanel(ni) {
+    var st = model.state;
+    PS.clear(pLink);
+    if (!iso || ni < 0 || iso.rec.length < 2) {
+      pLink.x.domain([0, 1]); pLink.y.domain([0, 1]); PS.axes(pLink);
+      d3.select("#linkReadout").html(iso ? "Move the mouse across the long profile to isolate a node; click to pin it. Columns isolated at t = " + U.fmtTime(iso.t0) + "." : "");
+      return;
+    }
+    var ls = iso.rec.map(function (r) { return { t: r.t, z2d: r.z2d[ni], z1d: r.z1d[ni], H2d: r.H2d[ni], H1d: r.H1d[ni] }; });
+    var tk = function (d) { return U.toKyr(d.t); }, last = ls[ls.length - 1];
+    pLink.x.domain([0, Math.max(U.toKyr(last.t), 1)]);
+    var lo = ratchetMin("linkLo" + ni, d3.min(ls, function (d) { return U.toKm(Math.min(d.z2d, d.z1d)); }));
+    var hi = ratchetMax("linkHi" + ni, d3.max(ls, function (d) { return U.toKm(Math.max(d.z2d + d.H2d, d.z1d + d.H1d)); }));
+    pLink.y.domain([lo - 0.01, hi + 0.01]);
+    PS.line(pLink, "ice2d", ls, function (d) { return U.toKm(d.z2d + d.H2d); }, C.ice, false, tk);
+    PS.line(pLink, "ice1d", ls, function (d) { return U.toKm(d.z1d + d.H1d); }, C.ice, true, tk);
+    PS.line(pLink, "z2d", ls, function (d) { return U.toKm(d.z2d); }, C.bed, false, tk);
+    PS.line(pLink, "z1d", ls, function (d) { return U.toKm(d.z1d); }, C.Us, true, tk);
+    PS.endLabel(pLink, "z2d", last, function (d) { return U.toKm(d.z2d); }, C.bed, "profile");
+    PS.endLabel(pLink, "z1d", last, function (d) { return U.toKm(d.z1d); }, C.Us, "isolated");
+    PS.axes(pLink, 5, 4);
+    var c = iso.cols[ni].state;
+    d3.select("#linkReadout").html((hoverNode >= 0 ? "Hovering" : "Pinned") + " node at <b>" + U.fmtLen(st.s[ni]) + "</b> · after " + U.fmtTime(last.t) + ": profile z = <b>" + U.fmtLen(last.z2d) +
+      "</b>, isolated z = <b>" + U.fmtLen(last.z1d) + "</b> · divergence <b>" + (last.z2d - last.z1d).toFixed(1) + " m</b> · erosion now " + U.fmtRate(st.Ef[ni] + st.Eg[ni]) + " vs " + U.fmtRate(c.Ef + c.Eg) +
+      " · ice " + last.H2d.toFixed(0) + " vs " + last.H1d.toFixed(0) + " m · <a href='" + d1Link(ni) + "' target='_blank'>open in d1 ↗</a>");
   }
 
   function draw() {
@@ -254,31 +294,10 @@
     P.line(pRates, "Er", rows, function (d) { return U.toMmyr(Math.min(d.Er, U.fromMmyr(eMax))); }, "#8c6d31", true, sKm);
     // ice
     P.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm);
-    if (link) [pProfile, pRates, pIce].forEach(function (pn) { P.vline(pn, "node", U.toKm(st.s[link.i])); });
+    var ni = shownNode();
+    if (ni >= 0) [pProfile, pRates, pIce].forEach(function (pn) { P.vline(pn, "node", U.toKm(st.s[ni])); });
     [pProfile, pRates, pIce].forEach(function (pn) { P.axes(pn); });
-    // linked column overlay
-    P.clear(pLink);
-    if (link && link.series.length > 1) {
-      var ls = link.series, tk = function (d) { return U.toKyr(d.t); };
-      pLink.x.domain([0, Math.max(U.toKyr(ls[ls.length - 1].t), 1)]);
-      var lo = ratchetMin("linkLo", d3.min(ls, function (d) { return U.toKm(Math.min(d.z2d, d.z1d)); }));
-      var hi = ratchetMax("linkHi", d3.max(ls, function (d) { return U.toKm(Math.max(d.z2d + d.H2d, d.z1d + d.H1d)); }));
-      pLink.y.domain([lo - 0.02, hi + 0.02]);
-      P.line(pLink, "ice2d", ls, function (d) { return U.toKm(d.z2d + d.H2d); }, C.ice, false, tk);
-      P.line(pLink, "ice1d", ls, function (d) { return U.toKm(d.z1d + d.H1d); }, C.ice, true, tk);
-      P.line(pLink, "z2d", ls, function (d) { return U.toKm(d.z2d); }, C.bed, false, tk);
-      P.line(pLink, "z1d", ls, function (d) { return U.toKm(d.z1d); }, C.Us, true, tk);
-      P.endLabel(pLink, "z2d", ls[ls.length - 1], function (d) { return U.toKm(d.z2d); }, C.bed, "profile");
-      P.endLabel(pLink, "z1d", ls[ls.length - 1], function (d) { return U.toKm(d.z1d); }, C.Us, "isolated");
-      P.axes(pLink);
-      var last = ls[ls.length - 1];
-      d3.select("#linkReadout").html("Node at <b>" + U.fmtLen(st.s[link.i]) + "</b> · after " + U.fmtTime(last.t) + ": profile z = <b>" + U.fmtLen(last.z2d) + "</b>, isolated z = <b>" + U.fmtLen(last.z1d) +
-        "</b> · divergence <b>" + (last.z2d - last.z1d).toFixed(1) + " m</b> · erosion now " + U.fmtRate(last.E2d) + " vs " + U.fmtRate(last.E1d) +
-        " · ice " + last.H2d.toFixed(0) + " vs " + last.H1d.toFixed(0) + " m · <a href='" + d1Link() + "' target='_blank'>open this column in d1 ↗</a>");
-    } else {
-      pLink.x.domain([0, 1]); pLink.y.domain([0, 1]); P.axes(pLink);
-      d3.select("#linkReadout").html(link ? "Node linked — run to see the curves." : "Click a point on the long profile to isolate that node as a d1 column and overlay the two.");
-    }
+    drawLinkPanel(ni);
     // history
     var h = st.history, tMyr = function (d) { return U.toMyr(d.t); };
     P.clear(pHist);
@@ -303,7 +322,7 @@
   function frame() {
     if (!playing) return;
     for (var k = 0; k < state.speed; k++) model.step();
-    model.record(); stepLink(state.speed);
+    model.record(); stepIso(state.speed);
     draw();
     raf = requestAnimationFrame(frame);
   }
@@ -312,30 +331,34 @@
     d3.select("#playPause").text(playing ? "❚❚ Pause" : "▶ Play");
     if (playing) raf = requestAnimationFrame(frame); else if (raf) cancelAnimationFrame(raf);
   }
-  function reset() { setPlaying(false); link = null; seen = {}; GS.ui.holdHeight(d3.selectAll("#readout, #linkReadout"), true); build(); draw(); url.write(state); }
+  function reset() { setPlaying(false); seen = {}; pinnedNode = -1; hoverNode = -1; GS.ui.holdHeight(d3.selectAll("#readout, #linkReadout"), true); build(); isolateAll(); draw(); url.write(state); }
+  d3.select("#reisoBtn").on("click", function () { Object.keys(seen).forEach(function (k) { if (k.indexOf("link") === 0) delete seen[k]; }); isolateAll(); draw(); });
   d3.select("#playPause").on("click", function () { setPlaying(!playing); });
-  d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); stepLink(state.speed); draw(); });
-  // click tool on the profile: pick the node under the pointer
-  pProfile.svg.style("cursor", "crosshair").on("click", function (ev) {
+  d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); stepIso(state.speed); draw(); });
+  // hover / click on the profile: show / pin the node under the pointer
+  function nodeUnder(ev) {
     var xy = d3.pointer(ev, pProfile.g.node());
-    var sKmClicked = pProfile.x.invert(xy[0]);
-    var i = Math.round(U.fromKm(sKmClicked) / model.state.ds);
-    linkNode(i); draw();
-  });
-  d3.select("#resetBtn").on("click", reset);
+    var i = Math.round(U.fromKm(pProfile.x.invert(xy[0])) / model.state.ds);
+    if (i < 0) i = 0; if (i > model.state.N - 2) i = model.state.N - 2;
+    return i;
+  }
+  pProfile.svg.style("cursor", "crosshair")
+    .on("mousemove", function (ev) { var i = nodeUnder(ev); if (i !== hoverNode) { hoverNode = i; draw(); } })
+    .on("mouseleave", function () { hoverNode = -1; draw(); })
+    .on("click", function (ev) { pinnedNode = nodeUnder(ev); hoverNode = -1; draw(); });
 
   GS.ui.buildControls(d3.select("#controls"), specs, state, function (id) {
     // domain / initial-condition changes need a rebuild; everything else applies live via rebuild-in-place of params
     if (["L", "N", "initProfile", "zHead", "noise"].indexOf(id) !== -1 || (state.initProfile === "steady" && model.state.t === 0 && ["KExp", "m", "nexp", "peakUplift", "pattern", "hack"].indexOf(id) !== -1)) { reset(); return; }
     var wasPlaying = playing;
-    link = null; // a parameter change invalidates the frozen column (click again to re-link)
     var keepT = model.state.t, keepZ = model.state.z, keepU = model.state.ucum, keepH = model.state.H, keepHist = model.state.history;
     build();
     // carry the evolving state across a parameter change (same grid)
     model.state.z.set(keepZ); model.state.ucum.set(keepU); model.state.H.set(keepH); model.state.t = keepT; model.state.history = keepHist;
+    isolateAll(); // the columns must share the profile's laws: re-base them on the current state
     draw(); url.write(state);
     if (wasPlaying) setPlaying(true);
   });
   window.GS_d2along_model = function () { return model; }; // for validation from the console
-  build(); draw();
+  build(); isolateAll(); draw();
 })();

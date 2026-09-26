@@ -83,11 +83,11 @@
         "dz/dt = U(t) f − E<sub>f</sub> − E<sub>g</sub>",
         "ice-free:  E<sub>f</sub> = K f<sub>K</sub> A<sup>m</sup> ((z − z<sub>down</sub>)/ds)<sup>n</sup>  (implicit)",
         "under ice: Γ′ (½(H + H<sub>down</sub>))<sup>5</sup> ((z + H − z<sub>down</sub> − H<sub>down</sub>)/ds)<sup>3</sup> = Q/W<sub>f</sub>,  U<sub>s</sub> = f<sub>s</sub> (Q/W)/max(H, H<sub>min</sub>),  E<sub>g</sub> = K<sub>g</sub> f<sub>Kg</sub> U<sub>s</sub><sup>l</sup>"],
-      "One node of the along-valley profile run on its own, with the same laws as the profile and everything that came from its neighbours frozen and badged asserted. It shows what a single cell can do by itself: relax its slope against a fixed receiver, thicken its ice against a fixed downstream surface, expose a body as it erodes. What it cannot do is see neighbours erode or a glacier advance. Perturb the constants to ask what the neighbours would have to do to change the fate of this column. The ELA sliders are inert here: the ELA reaches a node only through the flux Q, which is frozen.",
+      "One node of the along-valley profile run on its own, with the same laws as the profile and everything that came from its neighbours frozen and badged asserted: the neighbour's erosion rate (it keeps uplifting and eroding as it was), its ice, the ice flux from upstream. It shows what a single cell can do by itself: relax its slope against its receiver, thicken its ice against the downstream surface, expose a body as it erodes. What it cannot do is see neighbours erode or a glacier advance. Perturb the constants to ask what the neighbours would have to do to change the fate of this column. The ELA sliders are inert here: the ELA reaches a node only through the flux Q, which is frozen.",
       "d1/model.js createNodeColumn; py/d1_node.py; docs/linking.md", "asserted"),
     nS: M("Position along the valley s", ["r = body(s, z − U<sub>cum</sub>)"], "Where along the valley this node sits. It enters only through the lithology field (a dike is a band in s), since area and width are given separately.", null, "asserted"),
     nZ0: M("Initial elevation z(t<sub>0</sub>)", null, "The bed of the node at the moment it was isolated. Everything is measured from base level at the outlet.", null, "asserted"),
-    nZDown: M("Downstream bed z<sub>down</sub>", ["S = (z − z<sub>down</sub>)/ds"], "The elevation of the receiver, frozen. In the profile it keeps eroding; here it is the base level of this column, so the river slope relaxes toward it and the ice surface downstream is z<sub>down</sub> + H<sub>down</sub>. Lower it and the node steepens and erodes faster.", null, "asserted"),
+    nZDown: M("Downstream bed z<sub>down</sub> at isolation", ["z<sub>down</sub>(t) = z<sub>down</sub>(t<sub>0</sub>) + ΔU<sub>cum</sub> − e<sub>down</sub>(t − t<sub>0</sub>);   S = (z − z<sub>down</sub>)/ds"], "The receiver's elevation when the node was isolated. From then on it keeps doing what it was doing: uplifting with the shared forcing and eroding at its isolation-time rate. In a steady profile those cancel and the receiver holds its height, so a steady node stays exactly where the profile would keep it. Lower it and the node steepens and erodes faster.", null, "asserted"),
     nHDown: M("Downstream ice thickness H<sub>down</sub>", ["surface below = z<sub>down</sub> + H<sub>down</sub>"], "How thick the ice is on the downstream cell, frozen. It sets the ice surface the face law works against: thicker downstream ice backs up the ice of this node and slows its sliding.", null, "asserted"),
     nQ: M("Ice flux Q leaving the node", ["Q = ∫<sub>0</sub><sup>s</sup> b W ds  (in the profile)"], "How much ice passes through this cell per year, frozen. It contains everything upstream: accumulation area, balance gradient, ELA. Q = 0 means no ice and the node is fluvial; larger Q means thicker, faster ice and more erosion.", null, "asserted"),
     nA: M("Drainage area A", ["A = k<sub>a</sub>(s + s<sub>0</sub>)<sup>h</sup>"], "How much basin drains through this cell, hence the discharge and erosive power of the river. Hack's law in the profile; a constant here. The steady slope goes as A<sup>−m/n</sup>.", null, "asserted"),
@@ -96,7 +96,7 @@
     nFac: M("Spatial uplift factor f", ["U(s, t) = U(t) f"], "How much of the peak uplift this position receives (1 under uniform uplift, less near the ends of a ramp or gaussian pattern).", null, "asserted"),
     nRun: M("Run length", null, "How far past t<sub>0</sub> to integrate the isolated column.", null, null),
     pNodeZ: M("Elevation of the isolated node", ["z(t), ice surface z + H, z<sub>down</sub> (frozen)"],
-      "The bed and ice surface of the isolated cell through time, against its frozen downstream bed. Under ice the bed lowers against a frozen downstream surface, so H grows and sliding slows: a self-limiting overdeepening. Ice-free, the slope relaxes toward (U f / K A<sup>m</sup>)<sup>1/n</sup> and erosion toward the uplift rate.", null, "computed"),
+      "The bed and ice surface of the isolated cell through time, against its downstream bed (dashed grey), which keeps uplifting and eroding at its isolation-time rate. Under ice the bed lowers relative to the downstream surface, so H grows and sliding slows: a self-limiting overdeepening. Ice-free, the slope relaxes toward (U f / K A<sup>m</sup>)<sup>1/n</sup> and the node then rises with the block at the uplift rate.", null, "computed"),
     pNodeE: M("Erosion rates", ["E<sub>f</sub>, E<sub>g</sub>, U f"], "Fluvial and glacial lowering rates against the local uplift rate. Only one of the two acts, depending on whether the frozen flux Q is zero.", null, "computed"),
     pDiff: M("Upland height z<sub>B</sub> − z<sub>A</sub>", ["d(z<sub>B</sub> − z<sub>A</sub>)/dt = E<sub>A</sub> − E<sub>B</sub>"],
       "The hypothesis-B diagnostic: how high the resistant column stands above the weak landscape, and whether that survives the uplift event. Under the landscape coupling it can only grow or freeze (destruction by marginal retreat needs d2_across); under own-relief or max it is bounded and decays after stripping.", null, "computed")
@@ -140,6 +140,9 @@
     { id: "z0", label: "Initial elevation", type: "range", min: 0, max: 5, step: 0.01, val: 1.5, unit: "km", group: "Node (frozen adjacency)", asserted: true, method: m.nZ0 },
     { id: "zDown", label: "Downstream bed", type: "range", min: 0, max: 5, step: 0.01, val: 1.48, unit: "km", group: "Node (frozen adjacency)", asserted: true, method: m.nZDown },
     { id: "HDown", label: "Downstream ice", type: "range", min: 0, max: 800, step: 1, val: 0, unit: "m", group: "Node (frozen adjacency)", asserted: true, method: m.nHDown },
+    { id: "eDown", label: "Downstream erosion rate", type: "range", min: 0, max: 10, step: 0.05, val: 1, unit: "mm/yr", group: "Node (frozen adjacency)", asserted: true,
+      method: M("Receiver erosion rate e<sub>down</sub>", ["z<sub>down</sub>(t) = z<sub>down</sub>(t<sub>0</sub>) + ΔU<sub>cum</sub> − e<sub>down</sub>(t − t<sub>0</sub>)"],
+        "How fast the downstream neighbour keeps eroding: its rate at the moment of isolation, held constant. Equal to the uplift rate means the receiver holds its height (a steady profile); less and it rises under this node, flattening the slope and starving erosion; more and it drops away, steepening the node. In the profile this rate is set by the receiver's own neighbours, which is exactly what the column cannot see.", null, "asserted") },
     { id: "QExp", label: "Ice flux Q (min = none)", type: "range", min: 0, max: 8, step: 0.05, val: 0, log: true, group: "Node (frozen adjacency)", asserted: true, method: m.nQ,
       fmt: function (v) { return v <= 0 ? "no ice" : Math.pow(10, v).toExponential(2) + " m³/yr"; } },
     { id: "AExp", label: "Drainage area A", type: "range", min: -2, max: 3, step: 0.05, val: 1.5, log: true, group: "Node (frozen adjacency)", asserted: true, method: m.nA,
@@ -301,7 +304,7 @@
     };
     var col = GS.d1.createNodeColumn({
       s: U.fromKm(state.s), z0: U.fromKm(state.z0), ucum0: +state.ucum0, zDown: U.fromKm(state.zDown), HDown: state.HDown,
-      Q: state.QExp > 0 ? Math.pow(10, state.QExp) : 0, A: Math.pow(10, state.AExp) * 1e6, W: state.W, Wf: +state.Wf > 0 ? +state.Wf : state.W,
+      Q: state.QExp > 0 ? Math.pow(10, state.QExp) : 0, A: Math.pow(10, state.AExp) * 1e6, W: state.W, Wf: +state.Wf > 0 ? +state.Wf : state.W, eDown: U.fromMmyr(state.eDown),
       ds: state.ds, fac: state.fac, t0: +state.t0, dt: state.dt, params: params,
       litho: GS.d2along.lithoFromControls(state.lithoType, U.fromKm(state.lithoTop), U.fromKm(state.lithoThick), state.lithoPos, Lm)
     });
@@ -310,12 +313,12 @@
     var data = col.state.series, last = data[data.length - 1], t0 = +state.t0;
     var tk = function (d) { return U.toKyr(d.t - t0); };
     var pZ = panels[0], pE = panels[1], pI = panels[2];
-    var zLo = d3.min(data, function (d) { return U.toKm(Math.min(d.z, U.fromKm(state.zDown))); }), zHi = d3.max(data, function (d) { return U.toKm(d.z + d.H); });
+    var zLo = d3.min(data, function (d) { return U.toKm(Math.min(d.z, d.zDown)); }), zHi = d3.max(data, function (d) { return U.toKm(d.z + d.H); });
     var eMax = d3.max(data, function (d) { return U.toMmyr(Math.max(d.Ef, d.Eg, d.u)); }) || 0.1;
     var hMax = d3.max(data, function (d) { return d.H; }) || 1, usMax = d3.max(data, function (d) { return d.Us; }) || 1;
     panels.forEach(function (pn) { pn.x.domain([0, U.toKyr(last.t - t0)]); P.clear(pn); });
     pZ.y.domain([zLo - 0.02, zHi + 0.02]); pE.y.domain([0, eMax * 1.1]); pI.y.domain([0, hMax * 1.1]);
-    P.line(pZ, "zdown", data, function () { return state.zDown; }, "#999", true, tk);
+    P.line(pZ, "zdown", data, function (d) { return U.toKm(d.zDown); }, "#999", true, tk);
     P.line(pZ, "ice", data, function (d) { return U.toKm(d.z + d.H); }, C.ela, false, tk);
     P.line(pZ, "z", data, function (d) { return U.toKm(d.z); }, C.B, false, tk);
     P.line(pE, "u", data, function (d) { return U.toMmyr(d.u); }, C.flux, true, tk);

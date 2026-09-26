@@ -266,6 +266,7 @@
       return {
         i: i, s: st.s[i], z0: st.z[i], ucum0: st.ucum[i], zDown: st.z[i + 1], HDown: st.H[i + 1],
         Q: st.q[i] * st.W[i], A: st.A[i], W: st.W[i], Wf: 0.5 * (st.W[i] + st.W[i + 1]), ds: ds, fac: fac[i],
+        eDown: st.Ef[i + 1] + st.Eg[i + 1] + st.Er[i + 1],
         t0: st.t, dt: p.dt, params: p, litho: p.litho
       };
     }

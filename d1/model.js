@@ -142,9 +142,13 @@
 /*
  * Scenario "node": one node of the along-valley profile as an isolated column — the
  * d1 ↔ d2_along link. Everything the profile computed from ADJACENCY is frozen at its
- * click-time value and asserted (downstream bed z_down and ice H_down, ice flux Q leaving
- * the node, area A, widths W and W_f, node spacing ds); shared FORCING U(t) and ELA(t)
- * keep running (ELA acts only through the frozen flux, so the column is blind to it);
+ * isolation-time value and asserted: the downstream neighbour keeps doing what it was doing
+ * (uplifts with the shared forcing, erodes at its isolation-time rate eDown:
+ * z_down(t) = z_down(t0) + ΔU_cum − eDown·(t − t0); extrapolate=false supplies z_down directly),
+ * its ice H_down, the ice flux Q leaving the node, area A, widths W and W_f, spacing ds;
+ * shared FORCING U(t) and ELA(t) keep running (ELA acts only through the frozen flux, so the
+ * column is blind to it). A steady profile gives zero divergence; see py/d1_node.py for the
+ * two rejected variants.
  * LOCAL laws and feedbacks remain (lithology in the material frame, slope against the
  * frozen receiver, thickness from the face flux law against the frozen downstream surface).
  * Mirrored in py/d1_node.py; py/test_d1_node.py shows the column reproduces the 2D node
@@ -160,11 +164,13 @@
     var ELA = forcing.makeSeries({ shape: "sine", peak: -p.elaAmp, base: p.elaBase, period: p.elaPeriod });
     var lithoFn = spec.litho ? litho.make(spec.litho) : null;
     var Gam = laws.ICE.GAMMA * p.flow / (1 - p.fs), n = laws.ICE.N;
-    var frozen = { s: spec.s, zDown: spec.zDown, HDown: spec.HDown, Q: spec.Q, A: spec.A, W: spec.W, Wf: spec.Wf, ds: spec.ds, fac: spec.fac };
+    var frozen = { s: spec.s, zDown: spec.zDown, HDown: spec.HDown, Q: spec.Q, A: spec.A, W: spec.W, Wf: spec.Wf, ds: spec.ds, fac: spec.fac,
+                   extrapolate: spec.extrapolate !== false, eDown: spec.eDown || 0 };
     var st = { t: spec.t0, z: spec.z0, ucum: spec.ucum0, z0: spec.z0, ucum0: spec.ucum0, H: 0, Us: 0, Ef: 0, Eg: 0, r: 0, ecum: 0, series: [] };
 
     function record() {
-      st.series.push({ t: st.t, z: st.z, H: st.H, Us: st.Us, Ef: st.Ef, Eg: st.Eg, r: st.r, u: U(st.t) * frozen.fac, ela: ELA(st.t) });
+      st.series.push({ t: st.t, z: st.z, H: st.H, Us: st.Us, Ef: st.Ef, Eg: st.Eg, r: st.r, u: U(st.t) * frozen.fac, ela: ELA(st.t),
+                       zDown: st.zDown != null ? st.zDown : frozen.zDown });
     }
     function step() {
       var dt = spec.dt;
@@ -173,7 +179,8 @@
       var fK = litho.erodibilityFactor(r, p.contrastK), fKg = litho.erodibilityFactor(r, p.contrastKg);
       var du = U(st.t) * frozen.fac * dt;
       st.z += du; st.ucum += du;
-      var zsDown = frozen.zDown + frozen.HDown, H = 0, Us = 0, Eg = 0, Ef = 0;
+      var zDown = frozen.zDown + (frozen.extrapolate ? (st.ucum - spec.ucum0) - frozen.eDown * (st.t + dt - spec.t0) : 0);
+      var zsDown = zDown + frozen.HDown, H = 0, Us = 0, Eg = 0, Ef = 0;
       if (frozen.Q > 0) {
         H = laws.faceThickness(st.z, zsDown, frozen.HDown, frozen.Q / frozen.Wf, frozen.ds, Gam, n);
         Us = laws.slidingSpeed(frozen.Q / frozen.W, H, p.fs, p.Hmin != null ? p.Hmin : 10);
@@ -186,10 +193,10 @@
       if (w > 0) {
         var h0 = st.z;
         var Kp = p.K * fK * w * Math.pow(frozen.A, p.m);
-        var nh = laws.yuanNode(h0, h0, frozen.zDown, Kp, dt, frozen.ds, 0, p.nexp, false);
+        var nh = laws.yuanNode(h0, h0, zDown, Kp, dt, frozen.ds, 0, p.nexp, false);
         st.z = nh; Ef = (h0 - nh) / dt; st.ecum += h0 - nh;
       }
-      st.H = H; st.Us = Us; st.Eg = Eg; st.Ef = Ef;
+      st.H = H; st.Us = Us; st.Eg = Eg; st.Ef = Ef; st.zDown = zDown;
       st.t += dt;
     }
     record();

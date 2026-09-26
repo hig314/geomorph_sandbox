@@ -13,13 +13,14 @@ def check(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + ("  [" + detail + "]" if detail else ""))
     if not ok: fails.append(name)
 
-def spec_from(st, p, i, litho=None):
+def spec_from(st, p, i, litho=None, rise=True):
     s = st["s"]; W = st["W"]
     return {"s": float(s[i]), "z0": float(st["z"][i]), "ucum0": float(st["ucum"][i]), "zDown": float(st["z"][i + 1]),
             "HDown": float(st["H"][i + 1]), "Q": float(st["q"][i] * W[i]) if "q" in st else 0.0, "A": float(st["A"][i]),
             "W": float(W[i]), "Wf": float(0.5 * (W[i] + W[i + 1])), "ds": float(st["ds"]),
             "fac": gc.spatial_factor(float(s[i]) / p["L"], 0.5, p["pattern"], p["ramp"]), "t0": float(st["t"]), "dt": p["dt"],
-            "params": p, "litho": litho}
+            "params": p, "litho": litho, "extrapolate": rise,
+            "eDown": float(st["Ef"][i + 1] + st["Eg"][i + 1] + st["Er"][i + 1])}
 
 # ---- 0. the shared face law reproduces the d2 march exactly ----
 N = 151; L = 30000.0; s = np.linspace(0, L, N); ds = s[1] - s[0]
@@ -44,7 +45,7 @@ ice_nodes = np.where(st["H"] > 1)[0]
 NODES = (int(ice_nodes[len(ice_nodes) // 2]), int(ice_nodes[-1]) - 1, int(ice_nodes[-1]) + 30)   # under ice, near the terminus, fluvial
 for i_node in NODES:
     st = d2.make_state(p); d2.prime_ice(st, p, ELA); d2.step(st, p, U, ELA, None)
-    col = make_node_column(spec_from(st, p, i_node))
+    col = make_node_column(spec_from(st, p, i_node, rise=False))
     maxdiff = 0.0
     for k in range(30):
         # refresh the frozen adjacency from the 2D state BEFORE this step (what the node "sees")
@@ -66,11 +67,22 @@ for i_node in NODES:
 # ---- 2. Isolated fluvial column relaxes to z_down + ds (U f / (K A^m))^(1/n) ----
 st = d2.run({"glacierOn": False, "N": 151, "dt": 1000.0}, nsteps=1)
 p2 = st["p"]; i = 100
-col = make_node_column(spec_from(st, p2, i))
+col = make_node_column(spec_from(st, p2, i, rise=False))
 for k in range(3000): col["step"]()
 z_eq = col["frozen"]["zDown"] + col["frozen"]["ds"] * (p2["peakUplift"] * col["frozen"]["fac"] / (p2["K"] * col["frozen"]["A"] ** p2["m"])) ** (1 / p2["nexp"])
-check("isolated fluvial column → z_down + ds·(U/KA^m)^(1/n)", abs(col["state"]["z"] - z_eq) < 1e-3, "z %.3f vs %.3f" % (col["state"]["z"], z_eq))
+check("isolated fluvial column (fixed receiver) → z_down + ds·(U/KA^m)^(1/n)", abs(col["state"]["z"] - z_eq) < 1e-3, "z %.3f vs %.3f" % (col["state"]["z"], z_eq))
 check("isolated fluvial column erosion = uplift at equilibrium", abs(col["state"]["Ef"] - p2["peakUplift"]) < 1e-9)
+# default isolation (receiver uplifts and erodes at its isolation-time rate): for a fluvial profile in
+# steady state every isolated column stays identical to its node — zero divergence everywhere.
+stq = d2.run({"glacierOn": False, "initProfile": "steady", "K": 2e-5, "N": 151, "dt": 1000.0}, nsteps=1)
+pq = stq["p"]; Uq = gc.make_series({"shape": pq["shape"], "peak": pq["peakUplift"], "duration": pq["duration"]}); Eq = gc.make_series({"shape": "sine", "peak": 0.0, "base": 1500.0, "period": 1e5})
+colsq = [make_node_column(spec_from(stq, pq, i)) for i in range(0, 149, 7)]
+for k in range(100):
+    d2.step(stq, pq, Uq, Eq, None)
+    for c in colsq: c["step"]()
+divq = max(abs(c["state"]["z"] - stq["z"][round(c["frozen"]["s"] / stq["ds"])]) for c in colsq)
+check("steady fluvial profile: isolated columns show zero divergence", divq < 1e-6, "max |Δz| %.2e m over 100 kyr at %d nodes" % (divq, len(colsq)))
+check("… and every isolated column erodes at U", all(abs(c["state"]["Ef"] - pq["peakUplift"]) < 1e-9 for c in colsq))
 
 # ---- 3. Isolated glacial column: self-limiting overdeepening against a frozen downstream surface ----
 st = d2.run({"N": 151, "dt": 500.0}, nsteps=2)
@@ -81,9 +93,9 @@ zs = []
 for k in range(400): col["step"](); zs.append(col["state"]["z"])
 cs = col["state"]
 check("isolated glacial column: ice thickens as bed lowers (H > H_2D)", cs["H"] > st["H"][i] and cs["Us"] < st["Us"][i], "H %.0f→%.0f, Us %.1f→%.1f" % (st["H"][i], cs["H"], st["Us"][i], cs["Us"]))
-z_at_solve = cs["z"] + cs["Eg"] * p3["dt"]   # H was solved before this step's erosion lowered the bed
+z_at_solve = cs["z"] + (cs["Eg"] + cs["Ef"]) * p3["dt"]   # H was solved before this step's erosion lowered the bed
 qf = col["frozen"]["Q"] / col["frozen"]["Wf"]
-resid = Gam * (0.5 * (cs["H"] + col["frozen"]["HDown"])) ** 5 * ((z_at_solve + cs["H"] - col["frozen"]["zDown"] - col["frozen"]["HDown"]) / col["frozen"]["ds"]) ** 3 - qf
+resid = Gam * (0.5 * (cs["H"] + col["frozen"]["HDown"])) ** 5 * ((z_at_solve + cs["H"] - cs["zDown"] - col["frozen"]["HDown"]) / col["frozen"]["ds"]) ** 3 - qf
 check("isolated glacial column: face law holds", abs(resid) < 1e-3 * qf, "rel resid %.1e" % (resid / qf))
 check("isolated glacial column bookkeeping", abs(cs["z"] - (col["frozen"] and (spec_from(st, p3, i)["z0"]) + (cs["ucum"] - spec_from(st, p3, i)["ucum0"]) - cs["ecum"])) < 1e-6)
 
