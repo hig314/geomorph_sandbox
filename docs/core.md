@@ -110,9 +110,16 @@ the reference SIA) still applies.
 
 ### Python reference for the glacier bake-off
 
-DESIGN.md §4 says the legacy SIA "stays as the Python reference". No Python mirror of
-`glacierStep` was ever checked in, so that reference has to be written from the JS at the
-start of step 3 (d2_along), as a flowline SIA first.
+The flowline reference SIA now lives in `py/d2_along.py` (`reference_sia`), written from the
+legacy `glacierStep` numerics. It is a clean reference on smooth beds only; over bed steps it
+surges (icefall limit cycle), see `docs/d2_along.md`.
+
+### Legacy fluvial under-relaxation (fix to carry into d3)
+
+`fluvialStep` in the legacy DEM applies `OMEGA = 0.6` to the single pass used when `G = 0`,
+which is already the exact implicit solve; the result is ~60 % of the stream-power incision
+per step and a dt-dependent effective K. `d2_along` relaxes only inside the deposition
+iteration; the d3 migration must do the same.
 
 ## ui/
 

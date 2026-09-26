@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>geomorph sandbox — d2 along-valley</title>
+  <link rel="stylesheet" href="../ui/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Along-valley profile <span class="tier">d2_along · z(s, t)</span></h1>
+    <p>
+      A long profile from divide to outlet under uplift, <b>stream power</b> with Hack's-law
+      drainage area, and a <b>steady-discharge glacier</b>: mass balance routed down the valley
+      gives the ice flux, the SIA flux law inverted by marching upstream gives the thickness,
+      and erosion follows sliding speed. Drainage area and valley width are
+      <span class="badge asserted">asserted</span>; ice flux, thickness, sliding and erosion
+      are computed. Hover any <span class="tip-glyph">ⓘ</span> or panel title for the equations.
+    </p>
+    <nav class="tiers">
+      <a href="../index.html">home</a>
+      <a href="../d1/index.html">d1 column</a>
+      <a class="current" href="../d2_along/index.html">d2 along-valley</a>
+      <a class="todo" href="../d2_across/index.html">d2 across-valley</a>
+      <a class="todo" href="../d3/index.html">d3 DEM</a>
+    </nav>
+  </header>
+
+  <div class="layout">
+    <div id="charts"></div>
+    <div id="sidebar">
+      <div class="buttons">
+        <button id="playPause">▶ Play</button>
+        <button id="stepBtn">Step</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div id="readout"></div>
+      <div class="legend" id="legend">
+        <span style="color:#5a3d1e"><i></i>bed</span> <span style="color:#4292c6"><i></i>ice surface</span> <span style="color:#4292c6"><i class="dash"></i>ELA</span>
+        <span style="color:#8c2d04"><i style="border-top-width:4px"></i>resistant body</span><br/>
+        <span style="color:#2c7fb8"><i></i>fluvial</span> <span style="color:#d94801"><i></i>glacial</span> <span style="color:#888"><i class="dash"></i>uplift</span>
+        <span style="color:#238b45"><i></i>relief</span> <span style="color:#4292c6"><i class="dash"></i>ice volume (scaled)</span>
+      </div>
+      <div id="controls"></div>
+    </div>
+  </div>
+
+  <footer>
+    Glacier: <code>Q = ∫ b W ds</code>, <code>Γ′ H_f^5 S_f^3 = Q / W_f</code> marched upstream, <code>U_s = f_s q/H</code>,
+    <code>E_g = K_g U_s^l</code>. Fluvial: <code>E_f = K A^m S^n</code>, implicit (Yuan et al. 2019), <code>A = k_a s^h</code>.
+    Model in <code>d2_along/model.js</code> (no DOM); mirrored and validated in <code>py/d2_along.py</code>,
+    <code>py/test_d2_along.py</code> (gate vs reference SIA). Methods: <code>docs/d2_along.md</code>.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="../core/units.js"></script>
+  <script src="../core/forcing.js"></script>
+  <script src="../core/noise.js"></script>
+  <script src="../core/lithology.js"></script>
+  <script src="../core/laws.js"></script>
+  <script src="../ui/tooltip.js"></script>
+  <script src="../ui/urlstate.js"></script>
+  <script src="../ui/controls.js"></script>
+  <script src="../ui/panels.js"></script>
+  <script src="model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

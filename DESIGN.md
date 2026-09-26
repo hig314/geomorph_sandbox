@@ -100,9 +100,12 @@ low-angle area sits in the hypsometry, and how it moves through time).
   1. Route surface mass balance (positive above the ELA, negative below) over the ice surface
      with the existing priority-flood + MFD machinery (d3) or integrate along the flowline
      (d2_along). Flux clamps at zero where ablation exhausts it → terminus.
-  2. Invert the SIA flux law locally for thickness from flux and surface slope; iterate a few
-     times per frame (surface depends on thickness). Divides need a slope floor and
-     under-relaxation — the one numerical risk.
+  2. Thickness from the SIA flux law. *Original plan:* invert locally, `H = (q/ΓSⁿ)^(1/(n+2))`.
+     *Outcome (d2_along):* that diverges; the working scheme marches upstream from the
+     terminus solving `Γ′H_f^(n+2)S_f^n = q_f` for each node's thickness (unique root), with a
+     few outer iterations for the surface–balance coupling. In d3 the march becomes a sweep
+     in flow order over the routed network (receivers first), the same structure as the
+     fluvial stack.
   3. Erosion ∝ sliding speed (E = K_g·U_sˡ, U_s = f_s·q/H), the standard published form.
      Overdeepenings self-limit (filling flattens the surface, thickens the ice, slows it).
      Keep a rate cap as a safety.
@@ -151,12 +154,15 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
    `E_sub,B = k z_Aⁿ · f(r_B, c)` (rationale and consequences in `docs/d1.md`); 16 Python
    checks in `py/test_d1_columns.py`. Every control and panel carries its equations on
    mouse-over (`ui/tooltip.js`), a practice that continues in every tier.
-3. **d2_along.** Stream power with Hack's law; flowline glacier with the thickness inversion
-   validated in Python against a reference SIA; sliding-based erosion; quarrying on convexity.
-   *De-risks the d3 glacier.* The reference SIA does not exist yet: no Python mirror of the
-   legacy `glacierStep` was ever checked in, so a flowline SIA mirror is the first task of
-   this step. If pointwise inversion misbehaves at divides, solve the steady flux law as a
-   boundary-value problem along the line instead (cheap in 1-D).
+3. **d2_along.** ✓ *done 2026-09-25.* Stream power with Hack's law; steady-discharge
+   flowline glacier; sliding-based erosion; quarrying knob. **Gate passed**: thickness within
+   1 % of the reference explicit SIA on smooth beds, same terminus (`docs/d2_along.md`).
+   Two findings that change §4: (a) the pointwise inversion `H = (q/ΓSⁿ)^(1/(n+2))` diverges
+   and was replaced by the anticipated fallback, an upstream march solving the face flux law
+   node by node (monotone → unique root); (b) the legacy explicit SIA surges over bed steps
+   (icefall limit cycle) and is a reference only on smooth beds. Also found and fixed: the
+   legacy fluvial under-relaxation applied to the single `G = 0` pass throttled incision to
+   ~60 % (d3 must carry the fix).
 4. **d2_across.** Harbor-style shaping; creep; threshold slopes; 2D method of slices;
    plateau-edge retreat.
 5. **d3.** Swap the glacier to the routed steady-discharge model; per-cell strength fields;
