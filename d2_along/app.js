@@ -117,6 +117,27 @@
       "py/test_d1_node.py: the column reproduces the 2D node exactly when its adjacency is refreshed every step.", "computed")
   };
 
+  // ---- Curve tooltips (hover a line) ------------------------------------
+  var CT = GS.ui.curveTip;
+  var ct = {
+    bed: CT("Bedrock surface z(s)", C.bed, "solid", "The valley floor: uplifted each step, lowered by the river where ice-free, by sliding ice where glaciated, and by threshold failure where steeper than S<sub>c</sub>. The outlet (right) is held at base level.", "z(s, t)"),
+    iceFill: CT("Ice", C.iceFill, "fill", "The steady glacier that fits the current bed: mass balance summed down-valley gives the flux, the SIA flux law marched upstream gives the thickness. Recomputed every step.", "H(s) from Γ′ H<sub>f</sub><sup>5</sup> S<sub>f</sub><sup>3</sup> = Q/W<sub>f</sub>"),
+    iceSurf: CT("Ice surface z + H", C.ice, "solid", "Top of the glacier. Its slope, not the bed's, drives the flow; mass balance is evaluated at this elevation.", "z<sub>s</sub> = z + H"),
+    ela: CT("Equilibrium-line altitude", C.ela, "dashed", "Above it the ice surface gains mass, below it loses. Moves with the glacial cycle when the amplitude is nonzero.", "ELA(t) = ELA<sub>0</sub> − A · ½(1 − cos 2πt/P)"),
+    litho: CT("Surface inside the resistant body", C.litho, "solid", "Where the bed lies within the resistant body (material frame): erodibilities are divided by the contrasts here.", "r(s) > ½"),
+    u: CT("Uplift rate U(s, t)", C.uplift, "dashed", "The shared forcing at this instant, times the spatial pattern. Where an erosion curve sits on this line that reach is in steady state.", "U(t) · f(s)"),
+    Ef: CT("Fluvial erosion rate", C.fluv, "solid", "Stream-power incision on ice-free nodes (and at reduced efficiency under ice thinner than H<sub>f</sub>), solved implicitly from the outlet upstream.", "E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup> · w(H)"),
+    Eg: CT("Glacial erosion rate", C.glac, "solid", "Abrasion proportional to sliding speed under ice, through a three-cell footprint, capped at 2 cm/yr; plus quarrying on convex bed if enabled.", "E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup>"),
+    Er: CT("Threshold-failure (rockfall) rate", "#8c6d31", "dashed", "Lowering applied where a cell stood steeper than S<sub>c</sub> above its downstream neighbour. Usually zero except at headwalls and steps; clipped to the axis when large.", "excess = z<sub>i</sub> − z<sub>i+1</sub> − S<sub>c</sub> ds"),
+    Us: CT("Sliding speed U<sub>s</sub>", C.Us, "solid", "Basal sliding, the share f<sub>s</sub> of the depth-averaged speed q/H (with a minimum thickness H<sub>min</sub>). Erosion follows this curve.", "U<sub>s</sub> = f<sub>s</sub> q / max(H, H<sub>min</sub>)"),
+    relief: CT("Relief", C.relief, "solid", "Highest minus lowest bed elevation on the profile, through time.", "max z − min z"),
+    vol: CT("Ice volume (scaled)", C.vol, "dashed", "Total ice on the profile, scaled to the panel height (its own maximum reaches the top of the axis).", "Σ H W ds"),
+    z2d: CT("Profile node: bed", C.bed, "solid", "The real elevation of the hovered node as the whole profile runs, since the moment of isolation.", "z<sub>2D</sub>(t)"),
+    z1d: CT("Isolated column: bed", C.Us, "dashed", "The same node run alone with the same laws, everything from its neighbours frozen at isolation (receiver uplifting and eroding as it was, ice flux and downstream ice fixed). The gap to the solid curve is what the neighbours did.", "z<sub>1D</sub>(t)"),
+    ice2d: CT("Profile node: ice surface", C.ice, "solid", "Bed plus ice thickness at the node in the full profile.", "z<sub>2D</sub> + H<sub>2D</sub>"),
+    ice1d: CT("Isolated column: ice surface", C.ice, "dashed", "Bed plus the thickness that carries the frozen flux against the frozen downstream surface.", "z<sub>1D</sub> + H<sub>1D</sub>")
+  };
+
   // ---- Controls (display units) ------------------------------------------
   var SHAPES = [{ v: "constant", t: "Constant (square pulse)" }, { v: "bell", t: "Bell curve" }, { v: "plateau", t: "Ramp · hold · decay" }, { v: "pulse", t: "Pulse" }, { v: "arc", t: "Circular arc" }, { v: "triangle", t: "Triangle" }];
   var specs = [
@@ -255,10 +276,10 @@
     var lo = ratchetMin("linkLo" + ni, d3.min(ls, function (d) { return U.toKm(Math.min(d.z2d, d.z1d)); }));
     var hi = ratchetMax("linkHi" + ni, d3.max(ls, function (d) { return U.toKm(Math.max(d.z2d + d.H2d, d.z1d + d.H1d)); }));
     pLink.y.domain([lo - 0.01, hi + 0.01]);
-    PS.line(pLink, "ice2d", ls, function (d) { return U.toKm(d.z2d + d.H2d); }, C.ice, false, tk);
-    PS.line(pLink, "ice1d", ls, function (d) { return U.toKm(d.z1d + d.H1d); }, C.ice, true, tk);
-    PS.line(pLink, "z2d", ls, function (d) { return U.toKm(d.z2d); }, C.bed, false, tk);
-    PS.line(pLink, "z1d", ls, function (d) { return U.toKm(d.z1d); }, C.Us, true, tk);
+    PS.line(pLink, "ice2d", ls, function (d) { return U.toKm(d.z2d + d.H2d); }, C.ice, false, tk, ct.ice2d);
+    PS.line(pLink, "ice1d", ls, function (d) { return U.toKm(d.z1d + d.H1d); }, C.ice, true, tk, ct.ice1d);
+    PS.line(pLink, "z2d", ls, function (d) { return U.toKm(d.z2d); }, C.bed, false, tk, ct.z2d);
+    PS.line(pLink, "z1d", ls, function (d) { return U.toKm(d.z1d); }, C.Us, true, tk, ct.z1d);
     PS.endLabel(pLink, "z2d", last, function (d) { return U.toKm(d.z2d); }, C.bed, "profile");
     PS.endLabel(pLink, "z1d", last, function (d) { return U.toKm(d.z1d); }, C.Us, "isolated");
     PS.axes(pLink, 5, 4);
@@ -280,24 +301,25 @@
     [pRates, pIce].forEach(function (pn) { pn.x.domain([0, Lkm]); PW.clear(pn); });
     pProfile.y.domain([0, zMax * 1.05]); pRates.y.domain([0, eMax * 1.1]); pIce.y.domain([0, usMax * 1.1]);
     // profile
-    P.area(pProfile, "ice", rows, function (d) { return U.toKm(d.z); }, function (d) { return U.toKm(d.zs); }, C.iceFill, sKm);
-    if (state.glacierOn) P.line(pProfile, "ela", rows, function (d) { return U.toKm(d.ela); }, C.ela, true, sKm);
-    P.line(pProfile, "ice", rows, function (d) { return U.toKm(d.zs); }, C.ice, false, sKm);
-    P.line(pProfile, "bed", rows, function (d) { return U.toKm(d.z); }, C.bed, false, sKm);
+    P.area(pProfile, "ice", rows, function (d) { return U.toKm(d.z); }, function (d) { return U.toKm(d.zs); }, C.iceFill, sKm, ct.iceFill);
+    if (state.glacierOn) P.line(pProfile, "ela", rows, function (d) { return U.toKm(d.ela); }, C.ela, true, sKm, ct.ela);
+    P.line(pProfile, "ice", rows, function (d) { return U.toKm(d.zs); }, C.ice, false, sKm, ct.iceSurf);
+    P.line(pProfile, "bed", rows, function (d) { return U.toKm(d.z); }, C.bed, false, sKm, ct.bed);
     // lithology overlay: segments where r > 0.5
     var segs = [], cur = null;
     rows.forEach(function (d) { if (d.r > 0.5) { if (!cur) { cur = []; segs.push(cur); } cur.push(d); } else cur = null; });
     var lsel = pProfile.g.selectAll("path.line.litho").data(segs);
-    lsel.enter().append("path").attr("class", "line litho").attr("fill", "none").attr("stroke", C.litho).attr("stroke-width", 5).attr("stroke-opacity", 0.6)
-      .merge(lsel).attr("d", d3.line().x(function (d) { return pProfile.x(sKm(d)); }).y(function (d) { return pProfile.y(U.toKm(d.z)); }));
+    var lEnter = lsel.enter().append("path").attr("class", "line litho").attr("fill", "none").attr("stroke", C.litho).attr("stroke-width", 5).attr("stroke-opacity", 0.6).style("cursor", "help");
+    GS.ui.tip.attach(lEnter, ct.litho);
+    lEnter.merge(lsel).attr("d", d3.line().x(function (d) { return pProfile.x(sKm(d)); }).y(function (d) { return pProfile.y(U.toKm(d.z)); }));
     lsel.exit().remove();
     // rates
-    PW.line(pRates, "u", rows, function (d) { return U.toMmyr(d.u); }, C.uplift, true, sKm);
-    PW.line(pRates, "Ef", rows, function (d) { return U.toMmyr(d.Ef); }, C.fluv, false, sKm);
-    PW.line(pRates, "Eg", rows, function (d) { return U.toMmyr(d.Eg); }, C.glac, false, sKm);
-    PW.line(pRates, "Er", rows, function (d) { return U.toMmyr(Math.min(d.Er, U.fromMmyr(eMax))); }, "#8c6d31", true, sKm);
+    PW.line(pRates, "u", rows, function (d) { return U.toMmyr(d.u); }, C.uplift, true, sKm, ct.u);
+    PW.line(pRates, "Ef", rows, function (d) { return U.toMmyr(d.Ef); }, C.fluv, false, sKm, ct.Ef);
+    PW.line(pRates, "Eg", rows, function (d) { return U.toMmyr(d.Eg); }, C.glac, false, sKm, ct.Eg);
+    PW.line(pRates, "Er", rows, function (d) { return U.toMmyr(Math.min(d.Er, U.fromMmyr(eMax))); }, "#8c6d31", true, sKm, ct.Er);
     // ice
-    PW.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm);
+    PW.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm, ct.Us);
     var ni = shownNode();
     if (ni >= 0) { P.vline(pProfile, "node", U.toKm(st.s[ni])); PW.vline(pRates, "node", U.toKm(st.s[ni])); PW.vline(pIce, "node", U.toKm(st.s[ni])); }
     P.axes(pProfile); PW.axes(pRates); PW.axes(pIce);
@@ -308,8 +330,8 @@
     pHist.x.domain([0, Math.max(U.toMyr(h[h.length - 1].t), 0.01)]);
     var rMax = ratchetMax("relief", d3.max(h, function (d) { return U.toKm(d.relief); }) || 1), vMax = ratchetMax("vol", d3.max(h, function (d) { return d.iceVol; }) || 1);
     pHist.y.domain([0, rMax * 1.1]);
-    PW.line(pHist, "relief", h, function (d) { return U.toKm(d.relief); }, C.relief, false, tMyr);
-    PW.line(pHist, "vol", h, function (d) { return rMax * 1.1 * d.iceVol / (vMax * 1.1); }, C.vol, true, tMyr);
+    PW.line(pHist, "relief", h, function (d) { return U.toKm(d.relief); }, C.relief, false, tMyr, ct.relief);
+    PW.line(pHist, "vol", h, function (d) { return rMax * 1.1 * d.iceVol / (vMax * 1.1); }, C.vol, true, tMyr, ct.vol);
     PW.axes(pHist);
     var dg = model.diagnostics();
     d3.select("#readout").html(

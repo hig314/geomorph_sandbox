@@ -102,6 +102,32 @@
       "The hypothesis-B diagnostic: how high the resistant column stands above the weak landscape, and whether that survives the uplift event. Under the landscape coupling it can only grow or freeze (destruction by marginal retreat needs d2_across); under own-relief or max it is bounded and decays after stripping.", null, "computed")
   };
 
+  // ---- Curve tooltips (hover a line) ------------------------------------
+  var CT = GS.ui.curveTip;
+  var ct = {
+    uplift: CT("Uplift rate U(t)", C.uplift, "solid", "The shared forcing through time: the event shape times the peak rate.", "U(t) = U<sub>peak</sub> s(t)"),
+    relief: CT("Relief R(t)", C.relief, "solid", "The reservoir state: what uplift has built minus what erosion has removed.", "dR/dt = U − k Rⁿ"),
+    reliefEq: CT("Equilibrium relief", C.eq, "dashed", "The relief the instantaneous uplift would sustain if held forever; the solid curve chases it with a lag.", "R<sub>eq</sub> = (U/k)<sup>1/n</sup>"),
+    flux: CT("Uplift flux", C.flux, "dashed", "Uplift rate again, drawn against erosion so the two can be compared.", "U(t)"),
+    erosion: CT("Erosion rate", C.erosion, "solid", "Grows as the n-th power of relief; crosses the uplift curve when relief peaks.", "E = k Rⁿ"),
+    net: CT("Net rate", C.net, "solid", "Uplift minus erosion: relief grows above zero, decays below.", "dR/dt = U − E"),
+    zA: CT("Column A (weak rock)", C.A, "solid", "The landscape's relief reservoir: elevation above base level under the shared forcing.", "dz<sub>A</sub>/dt = U − k z<sub>A</sub>ⁿ − E<sub>gl</sub>(z<sub>A</sub>)"),
+    zB: CT("Column B (resistant body)", C.B, "solid", "Same forcing as A, but its erosion is divided by the contrast while its surface lies inside the body.", "dz<sub>B</sub>/dt = U − D<sub>B</sub> f(r, c) − E<sub>gl</sub>(z<sub>B</sub>) f(r, c<sub>g</sub>)"),
+    body: CT("Resistant body", C.body, "fill", "Where the body sits now: it rides up with cumulative uplift. B erodes slowly while its surface is inside this band.", "z<sub>0</sub> − d + U<sub>cum</sub> − T ≤ z ≤ z<sub>0</sub> − d + U<sub>cum</sub>"),
+    ela: CT("Equilibrium-line altitude", C.ela, "dashed", "Centre of the glacial erosion window; the buzzsaw bites hardest here.", "ELA(t)"),
+    EA: CT("Erosion of column A", C.A, "solid", "Subaerial plus glacial lowering of A.", "E<sub>A</sub> = k z<sub>A</sub>ⁿ + E<sub>gl</sub>(z<sub>A</sub>)"),
+    EB: CT("Erosion of column B", C.B, "solid", "Subaerial plus glacial lowering of B, reduced by the contrasts while the body is at the surface.", "E<sub>B</sub> = D<sub>B</sub> f(r, c) + E<sub>gl</sub>(z<sub>B</sub>) f(r, c<sub>g</sub>)"),
+    diff: CT("Upland height", C.diff, "solid", "How high the resistant column stands above the weak one.", "z<sub>B</sub> − z<sub>A</sub>"),
+    nz: CT("Isolated node: bed", C.B, "solid", "Elevation of the isolated cell, uplifted by the shared forcing and lowered by its own river or ice.", "z(t)"),
+    nice: CT("Isolated node: ice surface", C.ela, "solid", "Bed plus the thickness that carries the frozen ice flux against the downstream surface.", "z + H"),
+    nzdown: CT("Downstream bed (receiver)", "#999", "dashed", "The neighbour's bed, uplifting with the forcing and eroding at its isolation-time rate. The node's slope is measured against it.", "z<sub>down</sub>(t)"),
+    nEf: CT("Fluvial erosion", "#2c7fb8", "solid", "Stream power against the receiver, at the under-ice efficiency w(H).", "E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup> w(H)"),
+    nEg: CT("Glacial erosion", C.erosion, "solid", "Abrasion by the sliding of the frozen flux over the cell.", "E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup>"),
+    nU: CT("Local uplift", C.flux, "dashed", "The forcing at this position (peak rate times spatial factor).", "U(t) f"),
+    nH: CT("Ice thickness", C.ela, "solid", "Thickness carrying the frozen flux against the downstream surface; grows as the bed lowers.", "H(t)"),
+    nUs: CT("Sliding speed (scaled)", C.diff, "dashed", "Basal sliding, scaled to the panel height; falls as the ice thickens.", "U<sub>s</sub> = f<sub>s</sub> q / max(H, H<sub>min</sub>)")
+  };
+
   // ---- Controls (display units) ------------------------------------------
   var SHAPES = [
     { v: "bell", t: "Bell curve" }, { v: "plateau", t: "Ramp · hold · decay" }, { v: "pulse", t: "Pulse (sharp rise, decay)" },
@@ -229,15 +255,15 @@
     var netAbs = Math.max(Math.abs(d3.min(data, mm("net"))), Math.abs(d3.max(data, mm("net"))), 1e-3);
     panels.forEach(function (pn) { pn.x.domain([0, tMax]); P.clear(pn); });
     pU.y.domain([0, uMax * 1.1]); pR.y.domain([0, rMax * 1.1]); pE.y.domain([0, eMax * 1.1]); pN.y.domain([-netAbs * 1.1, netAbs * 1.1]);
-    P.line(pU, "uplift", data, mm("uplift"), C.uplift, false, tMyr);
-    P.line(pR, "reliefEq", data, km("reliefEq"), C.eq, true, tMyr);
-    P.line(pR, "relief", data, km("relief"), C.relief, false, tMyr);
+    P.line(pU, "uplift", data, mm("uplift"), C.uplift, false, tMyr, ct.uplift);
+    P.line(pR, "reliefEq", data, km("reliefEq"), C.eq, true, tMyr, ct.reliefEq);
+    P.line(pR, "relief", data, km("relief"), C.relief, false, tMyr, ct.relief);
     P.endLabel(pR, "relief", last, km("relief"), C.relief, "relief");
     P.endLabel(pR, "reliefEq", last, km("reliefEq"), C.eq, "equilibrium");
-    P.line(pE, "flux", data, mm("uplift"), C.flux, true, tMyr);
-    P.line(pE, "erosion", data, mm("erosion"), C.erosion, false, tMyr);
+    P.line(pE, "flux", data, mm("uplift"), C.flux, true, tMyr, ct.flux);
+    P.line(pE, "erosion", data, mm("erosion"), C.erosion, false, tMyr, ct.erosion);
     P.zero(pN);
-    P.line(pN, "net", data, mm("net"), C.net, false, tMyr);
+    P.line(pN, "net", data, mm("net"), C.net, false, tMyr, ct.net);
     panels.forEach(function (pn) { P.vline(pn, "event-end", state.duration); P.axes(pn); });
     var peakR = d3.max(data, function (d) { return d.relief; });
     d3.select("#readout").html(
@@ -261,21 +287,21 @@
     var dMax = d3.max(data, function (d) { return Math.abs(U.toKm(d.diff)); }) || 0.1;
     panels.forEach(function (pn) { pn.x.domain([0, tMax]); P.clear(pn); });
     pU.y.domain([0, uMax * 1.1]); pZ.y.domain([0, zMax * 1.1]); pE.y.domain([0, eMax * 1.1]); pD.y.domain([Math.min(0, -dMax * 1.1), dMax * 1.1]);
-    P.line(pU, "uplift", data, mm("uplift"), C.uplift, false, tMyr);
+    P.line(pU, "uplift", data, mm("uplift"), C.uplift, false, tMyr, ct.uplift);
     if (state.bodyThick > 0) {
       var clip = function (v) { return Math.max(0, Math.min(zMax * 1.1, U.toKm(v))); };
-      P.area(pZ, "body", data, function (d) { return clip(d.bodyBot); }, function (d) { return clip(d.bodyTop); }, C.body, tMyr);
+      P.area(pZ, "body", data, function (d) { return clip(d.bodyBot); }, function (d) { return clip(d.bodyTop); }, C.body, tMyr, ct.body);
     }
-    if (state.glacierOn) P.line(pZ, "ela", data, km("ela"), C.ela, true, tMyr);
-    P.line(pZ, "zA", data, km("zA"), C.A, false, tMyr);
-    P.line(pZ, "zB", data, km("zB"), C.B, false, tMyr);
+    if (state.glacierOn) P.line(pZ, "ela", data, km("ela"), C.ela, true, tMyr, ct.ela);
+    P.line(pZ, "zA", data, km("zA"), C.A, false, tMyr, ct.zA);
+    P.line(pZ, "zB", data, km("zB"), C.B, false, tMyr, ct.zB);
     P.endLabel(pZ, "zA", last, km("zA"), C.A, "A");
     P.endLabel(pZ, "zB", last, km("zB"), C.B, "B");
-    P.line(pE, "flux", data, mm("uplift"), C.flux, true, tMyr);
-    P.line(pE, "EA", data, mm("EA"), C.A, false, tMyr);
-    P.line(pE, "EB", data, mm("EB"), C.B, false, tMyr);
+    P.line(pE, "flux", data, mm("uplift"), C.flux, true, tMyr, ct.flux);
+    P.line(pE, "EA", data, mm("EA"), C.A, false, tMyr, ct.EA);
+    P.line(pE, "EB", data, mm("EB"), C.B, false, tMyr, ct.EB);
     P.zero(pD);
-    P.line(pD, "diff", data, km("diff"), C.diff, false, tMyr);
+    P.line(pD, "diff", data, km("diff"), C.diff, false, tMyr, ct.diff);
     panels.forEach(function (pn) { P.vline(pn, "event-end", state.duration); P.axes(pn); });
 
     // Readout: exposure / stripping times and the persistence comparison.
@@ -318,14 +344,14 @@
     var hMax = d3.max(data, function (d) { return d.H; }) || 1, usMax = d3.max(data, function (d) { return d.Us; }) || 1;
     panels.forEach(function (pn) { pn.x.domain([0, U.toKyr(last.t - t0)]); P.clear(pn); });
     pZ.y.domain([zLo - 0.02, zHi + 0.02]); pE.y.domain([0, eMax * 1.1]); pI.y.domain([0, hMax * 1.1]);
-    P.line(pZ, "zdown", data, function (d) { return U.toKm(d.zDown); }, "#999", true, tk);
-    P.line(pZ, "ice", data, function (d) { return U.toKm(d.z + d.H); }, C.ela, false, tk);
-    P.line(pZ, "z", data, function (d) { return U.toKm(d.z); }, C.B, false, tk);
-    P.line(pE, "u", data, function (d) { return U.toMmyr(d.u); }, C.flux, true, tk);
-    P.line(pE, "Ef", data, function (d) { return U.toMmyr(d.Ef); }, "#2c7fb8", false, tk);
-    P.line(pE, "Eg", data, function (d) { return U.toMmyr(d.Eg); }, C.erosion, false, tk);
-    P.line(pI, "H", data, function (d) { return d.H; }, C.ela, false, tk);
-    P.line(pI, "Us", data, function (d) { return hMax * 1.1 * d.Us / (usMax * 1.1); }, C.diff, true, tk);
+    P.line(pZ, "zdown", data, function (d) { return U.toKm(d.zDown); }, "#999", true, tk, ct.nzdown);
+    P.line(pZ, "ice", data, function (d) { return U.toKm(d.z + d.H); }, C.ela, false, tk, ct.nice);
+    P.line(pZ, "z", data, function (d) { return U.toKm(d.z); }, C.B, false, tk, ct.nz);
+    P.line(pE, "u", data, function (d) { return U.toMmyr(d.u); }, C.flux, true, tk, ct.nU);
+    P.line(pE, "Ef", data, function (d) { return U.toMmyr(d.Ef); }, "#2c7fb8", false, tk, ct.nEf);
+    P.line(pE, "Eg", data, function (d) { return U.toMmyr(d.Eg); }, C.erosion, false, tk, ct.nEg);
+    P.line(pI, "H", data, function (d) { return d.H; }, C.ela, false, tk, ct.nH);
+    P.line(pI, "Us", data, function (d) { return hMax * 1.1 * d.Us / (usMax * 1.1); }, C.diff, true, tk, ct.nUs);
     panels.forEach(function (pn) { P.axes(pn); });
     d3.select("#readout").html("Isolated node at <b>" + U.fmtLen(U.fromKm(state.s)) + "</b>: z " + U.fmtLen(U.fromKm(state.z0)) + " → <b>" + U.fmtLen(last.z) + "</b> after " + U.fmtTime(last.t - t0) +
       " · ice " + last.H.toFixed(0) + " m · sliding " + last.Us.toFixed(1) + " m/yr · erosion " + U.fmtRate(last.Ef + last.Eg) + (col.frozen.Q > 0 ? " (glacial)" : " (fluvial)") +

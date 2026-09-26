@@ -105,6 +105,9 @@ footer code { background: #eee; padding: 1px 4px; border-radius: 3px; }
   display: block; font-family: "Times New Roman", Times, serif; font-size: 14px; margin: 5px 0 5px 8px; white-space: nowrap;
 }
 .gs-tip .src { color: var(--muted); font-size: 11px; margin-top: 4px; }
+.gs-tip .sw { display: inline-block; width: 18px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.gs-tip .sw.line { height: 0; border-top: 2px solid; border-radius: 0; vertical-align: 3px; }
+.gs-tip .sw.line.dashed { border-top-style: dashed; }
 .gs-tip .tag { display: inline-block; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
   padding: 0 4px; border-radius: 3px; margin-right: 4px; }
 .gs-tip .tag.asserted { background: #fff3cd; color: #8a6d1d; border: 1px solid #ecd58a; }

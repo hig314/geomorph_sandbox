@@ -5,8 +5,11 @@
  *   var P = GS.ui.panels({width: 820, height: 150});
  *   var pn = P.make(parentSel, {title, yLabel, color, showX, xLabel, method});
  *   (method: HTML shown on hovering the panel title — the equations behind the lines)
- *   P.line(pn, "name", data, yAcc, color, dashed, xAcc)   // xAcc defaults to d.t
- *   P.area(pn, "name", data, y0Acc, y1Acc, color, xAcc)        // filled band
+ *   P.line(pn, "name", data, yAcc, color, dashed, xAcc, tip)   // xAcc defaults to d.t
+ *   P.area(pn, "name", data, y0Acc, y1Acc, color, xAcc, tip)        // filled band
+ *   tip: HTML shown on hovering the curve (a wide invisible hit stroke catches the pointer);
+ *   build it with GS.ui.curveTip(label, color, dashed, text). Visible curves themselves
+ *   ignore the pointer so the hit strokes and the panel's own handlers see it.
  *   P.endLabel(pn, "name", lastDatum, yAcc, color, text)
  *   P.vline(pn, "name", xValue)   P.zero(pn)   P.axes(pn)
  */
@@ -42,24 +45,36 @@
       return { svg: svg, g: g, x: x, y: y, h: h, w: innerW, xAxisG: xAxisG, yAxisG: yAxisG, showX: !!o.showX };
     }
 
-    function line(panel, name, data, yAcc, color, dashed, xAcc) {
+    function hitPath(panel, name, d, tip, width, fillHit) {
+      if (!tip || !GS.ui.tip) return;
+      var hit = panel.g.selectAll("path.hit-" + name).data([0]);
+      var ent = hit.enter().append("path").attr("class", "hit hit-" + name)
+        .attr("fill", fillHit ? "transparent" : "none").attr("stroke", "transparent").attr("stroke-width", width || 12)
+        .style("pointer-events", fillHit ? "all" : "stroke").style("cursor", "help");
+      GS.ui.tip.attach(ent, tip);
+      ent.merge(hit).attr("d", d).raise();
+    }
+
+    function line(panel, name, data, yAcc, color, dashed, xAcc, tip) {
       xAcc = xAcc || tAcc;
       var ln = d3.line().x(function (d) { return panel.x(xAcc(d)); }).y(function (d) { return panel.y(yAcc(d)); }).curve(d3.curveMonotoneX);
       var path = panel.g.selectAll("path.line-" + name).data([data]);
-      path.enter().append("path").attr("class", "line line-" + name).attr("fill", "none")
+      path.enter().append("path").attr("class", "line line-" + name).attr("fill", "none").style("pointer-events", "none")
         .attr("stroke", color).attr("stroke-width", dashed ? 1.5 : 2).attr("stroke-dasharray", dashed ? "4 3" : null)
         .merge(path).attr("d", ln);
+      hitPath(panel, name, ln(data), tip, 12, false);
     }
 
-    function area(panel, name, data, y0Acc, y1Acc, color, xAcc) {
+    function area(panel, name, data, y0Acc, y1Acc, color, xAcc, tip) {
       xAcc = xAcc || tAcc;
       var ar = d3.area().x(function (d) { return panel.x(xAcc(d)); })
         .y0(function (d) { return panel.y(y0Acc(d)); }).y1(function (d) { return panel.y(y1Acc(d)); });
       var path = panel.g.selectAll("path.area-" + name).data([data]);
-      path.enter().append("path").attr("class", "area area-" + name).attr("fill", color).attr("stroke", "none")
+      path.enter().append("path").attr("class", "area area-" + name).attr("fill", color).attr("stroke", "none").style("pointer-events", "none")
         .merge(path).attr("d", ar);
+      hitPath(panel, name, ar(data), tip, 0, true);
     }
-    function clear(panel) { panel.g.selectAll("path.line, path.area, text.endlabel, line.vline, line.zero-line").remove(); }
+    function clear(panel) { panel.g.selectAll("path.line, path.area, path.hit, text.endlabel, line.vline, line.zero-line").remove(); }
 
     function endLabel(panel, name, lastDatum, yAcc, color, text) {
       var sel = panel.g.selectAll("text.endlabel-" + name).data([lastDatum]);
@@ -87,6 +102,14 @@
       if (!panel.showX) panel.xAxisG.selectAll("text").style("display", "none");
     }
 
-    return { make: make, line: line, area: area, clear: clear, endLabel: endLabel, vline: vline, zero: zero, axes: axes, innerW: innerW, panelH: panelH };
+    return { make: make, line: line, area: area, hitPath: hitPath, clear: clear, endLabel: endLabel, vline: vline, zero: zero, axes: axes, innerW: innerW, panelH: panelH };
+  };
+
+  // Tooltip HTML for a curve: swatch (solid/dashed/fill), name, and what it is.
+  GS.ui.curveTip = function (label, color, style, text, eq) {
+    var sw = style === "fill"
+      ? '<span class="sw" style="background:' + color + '"></span>'
+      : '<span class="sw line' + (style === "dashed" ? " dashed" : "") + '" style="border-color:' + color + '"></span>';
+    return "<h4>" + sw + label + "</h4>" + (eq ? '<span class="eq">' + eq + "</span>" : "") + (text ? "<div>" + text + "</div>" : "");
   };
 })(typeof window !== "undefined" ? window : this);
