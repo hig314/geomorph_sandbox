@@ -183,16 +183,19 @@
   }
 
   // ---- Panels --------------------------------------------------------------
+  // Three panel factories at one pixel scale: the profile (820 wide) and the side panel (420)
+  // share the top row; the full-width panels below are 1246 = 820 + 6 + 420 so nothing rescales.
   var P = GS.ui.panels({ width: 820, height: 170 });
   var PS = GS.ui.panels({ width: 420, height: 170, margin: { top: 18, right: 56, bottom: 8, left: 52 } });
+  var PW = GS.ui.panels({ width: 1246, height: 170 });
   var charts = d3.select("#charts");
   var topRow = charts.append("div").attr("class", "chart-row");
   var mainCol = topRow.append("div").attr("class", "main"), sideCol = topRow.append("div").attr("class", "side");
   var pProfile = P.make(mainCol, { title: "Long profile  (hover: isolate that node →)", yLabel: "z (km)", color: C.bed, method: m.pProfile });
   var pLink = PS.make(sideCol, { title: "Isolated vs profile at the hovered node", yLabel: "z (km)", color: C.Us, showX: true, xLabel: "time since isolation (kyr)", method: m.pLink });
-  var pRates = P.make(charts, { title: "Erosion rates  vs  uplift", yLabel: "rate (mm/yr)", color: C.glac, method: m.pRates });
-  var pIce = P.make(charts, { title: "Sliding speed", yLabel: "U_s (m/yr)", color: C.Us, showX: true, xLabel: "distance from divide s (km)", method: m.pIce });
-  var pHist = P.make(charts, { title: "History", yLabel: "relief (km)", color: C.relief, showX: true, xLabel: "time (Myr)", method: m.pHist });
+  var pRates = PW.make(charts, { title: "Erosion rates  vs  uplift", yLabel: "rate (mm/yr)", color: C.glac, method: m.pRates });
+  var pIce = PW.make(charts, { title: "Sliding speed", yLabel: "U_s (m/yr)", color: C.Us, showX: true, xLabel: "distance from divide s (km)", method: m.pIce });
+  var pHist = PW.make(charts, { title: "History", yLabel: "relief (km)", color: C.relief, showX: true, xLabel: "time (Myr)", method: m.pHist });
   var sKm = function (d) { return U.toKm(d.s); };
   // ---- Isolated columns for EVERY node, stepped in lockstep with the profile ----
   // iso = { t0, cols[], rec: [{t, z2d: Float32Array, z1d, H2d, H1d}] }. Hover the profile to see
@@ -273,7 +276,8 @@
     var zMax = ratchetMax("z", d3.max(rows, function (d) { return U.toKm(Math.max(d.zs, state.glacierOn ? d.ela : 0)); }) || 1);
     var eMax = ratchetMax("e", d3.max(rows, function (d) { return U.toMmyr(Math.max(d.Ef, d.Eg, d.u)); }) || 0.1);
     var usMax = ratchetMax("us", d3.max(rows, function (d) { return d.Us; }) || 1);
-    [pProfile, pRates, pIce].forEach(function (pn) { pn.x.domain([0, Lkm]); P.clear(pn); });
+    pProfile.x.domain([0, Lkm]); P.clear(pProfile);
+    [pRates, pIce].forEach(function (pn) { pn.x.domain([0, Lkm]); PW.clear(pn); });
     pProfile.y.domain([0, zMax * 1.05]); pRates.y.domain([0, eMax * 1.1]); pIce.y.domain([0, usMax * 1.1]);
     // profile
     P.area(pProfile, "ice", rows, function (d) { return U.toKm(d.z); }, function (d) { return U.toKm(d.zs); }, C.iceFill, sKm);
@@ -288,25 +292,25 @@
       .merge(lsel).attr("d", d3.line().x(function (d) { return pProfile.x(sKm(d)); }).y(function (d) { return pProfile.y(U.toKm(d.z)); }));
     lsel.exit().remove();
     // rates
-    P.line(pRates, "u", rows, function (d) { return U.toMmyr(d.u); }, C.uplift, true, sKm);
-    P.line(pRates, "Ef", rows, function (d) { return U.toMmyr(d.Ef); }, C.fluv, false, sKm);
-    P.line(pRates, "Eg", rows, function (d) { return U.toMmyr(d.Eg); }, C.glac, false, sKm);
-    P.line(pRates, "Er", rows, function (d) { return U.toMmyr(Math.min(d.Er, U.fromMmyr(eMax))); }, "#8c6d31", true, sKm);
+    PW.line(pRates, "u", rows, function (d) { return U.toMmyr(d.u); }, C.uplift, true, sKm);
+    PW.line(pRates, "Ef", rows, function (d) { return U.toMmyr(d.Ef); }, C.fluv, false, sKm);
+    PW.line(pRates, "Eg", rows, function (d) { return U.toMmyr(d.Eg); }, C.glac, false, sKm);
+    PW.line(pRates, "Er", rows, function (d) { return U.toMmyr(Math.min(d.Er, U.fromMmyr(eMax))); }, "#8c6d31", true, sKm);
     // ice
-    P.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm);
+    PW.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm);
     var ni = shownNode();
-    if (ni >= 0) [pProfile, pRates, pIce].forEach(function (pn) { P.vline(pn, "node", U.toKm(st.s[ni])); });
-    [pProfile, pRates, pIce].forEach(function (pn) { P.axes(pn); });
+    if (ni >= 0) { P.vline(pProfile, "node", U.toKm(st.s[ni])); PW.vline(pRates, "node", U.toKm(st.s[ni])); PW.vline(pIce, "node", U.toKm(st.s[ni])); }
+    P.axes(pProfile); PW.axes(pRates); PW.axes(pIce);
     drawLinkPanel(ni);
     // history
     var h = st.history, tMyr = function (d) { return U.toMyr(d.t); };
-    P.clear(pHist);
+    PW.clear(pHist);
     pHist.x.domain([0, Math.max(U.toMyr(h[h.length - 1].t), 0.01)]);
     var rMax = ratchetMax("relief", d3.max(h, function (d) { return U.toKm(d.relief); }) || 1), vMax = ratchetMax("vol", d3.max(h, function (d) { return d.iceVol; }) || 1);
     pHist.y.domain([0, rMax * 1.1]);
-    P.line(pHist, "relief", h, function (d) { return U.toKm(d.relief); }, C.relief, false, tMyr);
-    P.line(pHist, "vol", h, function (d) { return rMax * 1.1 * d.iceVol / (vMax * 1.1); }, C.vol, true, tMyr);
-    P.axes(pHist);
+    PW.line(pHist, "relief", h, function (d) { return U.toKm(d.relief); }, C.relief, false, tMyr);
+    PW.line(pHist, "vol", h, function (d) { return rMax * 1.1 * d.iceVol / (vMax * 1.1); }, C.vol, true, tMyr);
+    PW.axes(pHist);
     var dg = model.diagnostics();
     d3.select("#readout").html(
       "t = <b>" + U.fmtTime(dg.t) + "</b>  ·  relief <b>" + U.fmtLen(dg.relief) + "</b>  ·  max ice <b>" + dg.maxH.toFixed(0) + " m</b>" +
