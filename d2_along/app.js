@@ -336,6 +336,7 @@
     if (playing) raf = requestAnimationFrame(frame); else if (raf) cancelAnimationFrame(raf);
   }
   function reset() { setPlaying(false); seen = {}; pinnedNode = -1; hoverNode = -1; GS.ui.holdHeight(d3.selectAll("#readout, #linkReadout"), true); build(); isolateAll(); draw(); url.write(state); }
+  d3.select("#resetBtn").on("click", reset);
   d3.select("#reisoBtn").on("click", function () { Object.keys(seen).forEach(function (k) { if (k.indexOf("link") === 0) delete seen[k]; }); isolateAll(); draw(); });
   d3.select("#playPause").on("click", function () { setPlaying(!playing); });
   d3.select("#stepBtn").on("click", function () { setPlaying(false); for (var k = 0; k < state.speed; k++) model.step(); model.record(); stepIso(state.speed); draw(); });
