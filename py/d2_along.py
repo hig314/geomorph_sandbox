@@ -161,7 +161,8 @@ DEFAULTS = {
     "glacierOn": True, "elaBase": 1500.0, "elaAmp": 0.0, "elaPeriod": 1e5, "balGrad": 0.007,
     "accMax": 2.0, "abMax": 8.0, "fs": 0.5, "flow": 1.0, "Kg": 1e-4, "lexp": 1.0, "eroCap": 0.02,
     "Kq": 0.0, "iceIters": 30, "relax": 0.5, "smin": 1e-3, "iceTol": 0.01, "Hmin": 10.0, "eroSmooth": True,
-    "steadySlopeMax": 0.6,
+    "Hf": 100.0, "phiSub": 0.0,   # fluvial efficiency under ice: w = phiSub + (1 − phiSub)·max(0, 1 − H/Hf)
+    "Sc": 0.8,   # threshold slope: rockfall relaxes any ice-free cell standing steeper than this above its downstream neighbour
     "litho": None, "contrastK": 5.0, "contrastKg": 5.0,
     "dt": 500.0,
 }
@@ -178,7 +179,7 @@ def init_profile(p):
         for i in range(N - 2, -1, -1):
             f = gc.spatial_factor(s[i] / L, 0.5, p["pattern"], p["ramp"])
             S = (p["peakUplift"] * f / (p["K"] * A[i] ** p["m"])) ** (1.0 / p["nexp"])
-            z[i] = z[i + 1] + ds * min(S, p["steadySlopeMax"])   # threshold-hillslope cap
+            z[i] = z[i + 1] + ds * min(S, p["Sc"])   # threshold-hillslope cap
     else:  # concave: z ∝ (1 − s/L)^1.5 … a fluvial-looking profile
         z = p["zHead"] * (1 - s / L) ** 1.5
     if p["noise"] > 0:
@@ -192,12 +193,19 @@ def make_state(p):
     return {"t": 0.0, "s": s, "ds": ds, "z": z, "ucum": np.zeros_like(z), "H": np.zeros_like(z),
             "Us": np.zeros_like(z), "Ef": np.zeros_like(z), "Eg": np.zeros_like(z),
             "A": hack_area(s, p["ka"], p["hack"]), "W": valley_width(s, p["W0"], p["kw"]),
-            "exported": 0.0, "eroFluv": 0.0, "eroGlac": 0.0, "upliftVol": 0.0}
+            "exported": 0.0, "eroFluv": 0.0, "eroGlac": 0.0, "eroRock": 0.0, "upliftVol": 0.0, "Er": np.zeros_like(z)}
+
+def fluvial_weight(H, p):
+    """Fluvial efficiency under ice: 1 on bare ground, ramping down over the first Hf metres of
+    ice to a floor phiSub (subglacial meltwater). A binary on/off at the ice margin made each cell
+    the terminus vacated take a burst of incision and left a cell-scale sawtooth in bed and ice."""
+    return p["phiSub"] + (1.0 - p["phiSub"]) * np.clip(1.0 - H / p["Hf"], 0.0, 1.0)
 
 def fluvial_step(st, p, iceMask):
     """Implicit Yuan erosion–deposition along the line (receiver = downstream node)."""
     z = st["z"]; A = st["A"]; W = st["W"]; ds = st["ds"]; dt = p["dt"]; N = len(z)
-    Kf = p["K"] * st["fK"]
+    wfl = fluvial_weight(st["H"], p)
+    Kf = p["K"] * st["fK"] * wfl
     h0 = z.copy(); G = p["G"]
     # Under-relaxation only while iterating the deposition feedback. With G = 0 the
     # downstream-first sweep IS the exact implicit solve, and relaxing it (as the legacy
@@ -214,7 +222,7 @@ def fluvial_step(st, p, iceMask):
         # (b) implicit update from the outlet upstream (receiver already updated)
         maxd = 0.0
         for i in range(N - 2, -1, -1):
-            if iceMask[i]:
+            if wfl[i] <= 0.0:
                 continue
             hr = z[i + 1]
             dep = dt * G * Qs[i] / A[i]
@@ -265,7 +273,8 @@ def step(st, p, U_of_t, ELA_of_t, litho_fn):
             # erosion footprint [¼ ½ ¼]: glacial erosion acts over an ice-thickness-scale patch,
             # not one cell; this also removes the two-cell (checkerboard) mode of the E ∝ 1/H
             # feedback exactly. Ends keep their own value.
-            Es = E.copy(); Es[1:-1] = 0.25 * E[:-2] + 0.5 * E[1:-1] + 0.25 * E[2:]; E = Es
+            Es = E.copy(); Es[1:-1] = 0.25 * E[:-2] + 0.5 * E[1:-1] + 0.25 * E[2:]
+            Es[0] = 0.5 * (E[0] + E[1]); Es[-1] = 0.5 * (E[-2] + E[-1]); E = Es
         E = np.minimum(E, p["eroCap"]); E[-1] = 0.0
         z -= E * dt
         st["H"] = H; st["Us"] = Us; st["Eg"] = E; st["q"] = ice["q"]; st["b"] = ice["b"]
@@ -274,6 +283,18 @@ def step(st, p, U_of_t, ELA_of_t, litho_fn):
         iceMask = np.zeros(N, dtype=bool); st["H"][:] = 0.0; st["Us"][:] = 0.0; st["Eg"][:] = 0.0
     # 3. fluvial on ice-free nodes
     fluvial_step(st, p, iceMask)
+    # 4. threshold-slope failure (headwall retreat / step collapse): no cell may stand steeper than
+    #    Sc above its downstream neighbour, ice or no ice (a 100 m cell step steeper than Sc is
+    #    treated as unstable: rockfall subaerially, block failure of the step under ice); the excess
+    #    is removed and exported (debris evacuated by the glacier / river below — asserted). Sweep
+    #    from the outlet upstream so each receiver is final.
+    rock = 0.0; st["Er"][:] = 0.0
+    lim = p["Sc"] * ds
+    for i in range(N - 2, -1, -1):
+        ex = z[i] - z[i + 1] - lim
+        if ex > 0:
+            z[i] -= ex; rock += ex * ds * st["W"][i]; st["Er"][i] = ex / dt
+    st["eroRock"] += rock
     st["t"] += dt
 
 def prime_ice(st, p, ELA_of_t):

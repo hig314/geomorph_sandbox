@@ -173,18 +173,23 @@
       var fK = litho.erodibilityFactor(r, p.contrastK), fKg = litho.erodibilityFactor(r, p.contrastKg);
       var du = U(st.t) * frozen.fac * dt;
       st.z += du; st.ucum += du;
-      var zsDown = frozen.zDown + frozen.HDown;
+      var zsDown = frozen.zDown + frozen.HDown, H = 0, Us = 0, Eg = 0, Ef = 0;
       if (frozen.Q > 0) {
-        var H = laws.faceThickness(st.z, zsDown, frozen.HDown, frozen.Q / frozen.Wf, frozen.ds, Gam, n);
-        var Us = laws.slidingSpeed(frozen.Q / frozen.W, H, p.fs, p.Hmin != null ? p.Hmin : 10);
-        var Eg = H > 1 ? laws.capRate(laws.abrasion(p.Kg * fKg, Us, p.lexp), p.eroCap) : 0;
-        st.z -= Eg * dt; st.H = H; st.Us = Us; st.Eg = Eg; st.Ef = 0; st.ecum += Eg * dt;
-      } else {
-        var h0 = st.z;
-        var Kp = p.K * fK * Math.pow(frozen.A, p.m);
-        var nh = laws.yuanNode(h0, h0, frozen.zDown, Kp, dt, frozen.ds, 0, p.nexp, false);
-        st.z = nh; st.Ef = (h0 - nh) / dt; st.Eg = 0; st.H = 0; st.Us = 0; st.ecum += h0 - nh;
+        H = laws.faceThickness(st.z, zsDown, frozen.HDown, frozen.Q / frozen.Wf, frozen.ds, Gam, n);
+        Us = laws.slidingSpeed(frozen.Q / frozen.W, H, p.fs, p.Hmin != null ? p.Hmin : 10);
+        Eg = H > 1 ? laws.capRate(laws.abrasion(p.Kg * fKg, Us, p.lexp), p.eroCap) : 0;
+        st.z -= Eg * dt; st.ecum += Eg * dt;
       }
+      // fluvial with the same under-ice efficiency ramp as the profile
+      var phi = p.phiSub || 0, Hf = p.Hf != null ? p.Hf : 100, rr = 1 - H / Hf; if (rr < 0) rr = 0; if (rr > 1) rr = 1;
+      var w = phi + (1 - phi) * rr;
+      if (w > 0) {
+        var h0 = st.z;
+        var Kp = p.K * fK * w * Math.pow(frozen.A, p.m);
+        var nh = laws.yuanNode(h0, h0, frozen.zDown, Kp, dt, frozen.ds, 0, p.nexp, false);
+        st.z = nh; Ef = (h0 - nh) / dt; st.ecum += h0 - nh;
+      }
+      st.H = H; st.Us = Us; st.Eg = Eg; st.Ef = Ef;
       st.t += dt;
     }
     record();

@@ -43,18 +43,21 @@ def make_node_column(spec):
         du = U(st["t"]) * frozen["fac"] * dt
         st["z"] += du; st["ucum"] += du
         zsDown = frozen["zDown"] + frozen["HDown"]
+        H = 0.0; Us = 0.0; Eg = 0.0
         if frozen["Q"] > 0:
             H = gc.face_thickness(st["z"], zsDown, frozen["HDown"], frozen["Q"] / frozen["Wf"], frozen["ds"], Gam, n)
             Us = gc.sliding_speed(frozen["Q"] / frozen["W"], H, p["fs"], p.get("Hmin", 10.0)) if H > 0 else 0.0
             Eg = gc.cap_rate(gc.abrasion(p["Kg"] * fKg, Us, p["lexp"]), p["eroCap"]) if H > 1.0 else 0.0
-            st["z"] -= Eg * dt; st["H"] = H; st["Us"] = Us; st["Eg"] = Eg; st["Ef"] = 0.0
-            st["ecum"] += Eg * dt
-        else:
+            st["z"] -= Eg * dt; st["ecum"] += Eg * dt
+        # fluvial with the same under-ice efficiency ramp as the profile
+        w = p.get("phiSub", 0.0) + (1.0 - p.get("phiSub", 0.0)) * min(1.0, max(0.0, 1.0 - H / p.get("Hf", 100.0)))
+        Ef = 0.0
+        if w > 0.0:
             h0 = st["z"]
-            Kp = p["K"] * fK * frozen["A"] ** p["m"]
+            Kp = p["K"] * fK * w * frozen["A"] ** p["m"]
             nh = gc.yuan_node(h0, h0, frozen["zDown"], Kp, dt, frozen["ds"], 0.0, p["nexp"], False)
-            st["z"] = nh; st["Ef"] = (h0 - nh) / dt; st["Eg"] = 0.0; st["H"] = 0.0; st["Us"] = 0.0
-            st["ecum"] += h0 - nh
+            st["z"] = nh; Ef = (h0 - nh) / dt; st["ecum"] += h0 - nh
+        st["H"] = H; st["Us"] = Us; st["Eg"] = Eg; st["Ef"] = Ef
         st["t"] += dt
 
     record()

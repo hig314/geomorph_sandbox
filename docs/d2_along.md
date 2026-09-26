@@ -139,7 +139,30 @@ and exposed as a control with its equation on hover:
    `[¼ ½ ¼]` footprint (an ice-thickness-scale patch rather than one cell), which annihilates
    a two-cell mode exactly, as a safeguard. Off shows the raw law.
 
-Also: the "steady" initial profile caps its slope at 0.6 (a threshold hillslope). Where
+4. **Headwall spire.** The divide cell receives almost no ice flux (`Q₀ = b₀ W₀ ds`), so its
+   ice is metres thick and it hardly erodes while the cell below erodes at full sliding; it
+   rises with uplift into a single-cell spire (680 m above its neighbour after 200 kyr in the
+   reported scenario) and rings the cirque floor below. This is the missing headwall process,
+   not a mode. **Threshold-slope failure** (DESIGN.md §4 hillslopes): after the fluvial step,
+   sweeping from the outlet upstream, any cell standing steeper than `S_c` (default 0.8) above
+   its downstream neighbour is lowered to that slope, ice or no ice (a 100 m step steeper than
+   `S_c` is treated as unstable: rockfall subaerially, block failure of the step under ice). An
+   ice-free-only version was tried first and failed: the capped head grew a thin ice apron and
+   the spire returned under it. The excess volume is booked as rockfall export (debris evacuated
+   by the glacier or river below, asserted).
+
+5. **Ice-margin handoff.** With the river switched off at the first cell carrying ice and
+   running at full strength on the next, every cell the terminus vacated as the ELA cycled
+   took a burst of incision (2.5× uplift) before ice returned; the glacier then rode over a
+   stepped bed and its thickness and sliding zig-zagged cell to cell (a 31 m bed sawtooth and
+   five thickness sign changes over the last fifteen ice cells in a low-K_g scenario). Fluvial
+   efficiency now ramps down over the first `H_f` metres of ice (default 100 m) to a floor
+   `φ_sub` (default 0): `K → K · (φ_sub + (1 − φ_sub) max(0, 1 − H/H_f))`, read as meltwater
+   under thin marginal ice. Compared on that scenario: the ramp alone removes the thickness
+   zig-zag and cuts the bed sawtooth to 9 m; a conservative footprint on the fluvial increment
+   helped less and was not adopted. The d1 node column applies the same weight.
+
+Also: the "steady" initial profile caps its slope at the same `S_c` (a threshold hillslope). Where
 `U/(K A^m)` asks for more, the profile is at threshold, not in fluvial equilibrium, and the
 readout says over what length. Without the cap an erodibility of 3×10⁻⁷ at 2.8 mm/yr made a
 217 km high starting profile.

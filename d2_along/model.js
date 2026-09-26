@@ -25,7 +25,7 @@
     K: 3.2e-6, m: 0.5, nexp: 1.0, G: 0, ka: 5.7, hack: 1.667, s0: 200, W0: 300, kw: 0.05,
     glacierOn: true, elaBase: 1500, elaAmp: 0, elaPeriod: 1e5, balGrad: 0.007,
     accMax: 2.0, abMax: 8.0, fs: 0.5, flow: 1.0, Kg: 1e-4, lexp: 1.0, eroCap: 0.02,
-    Kq: 0, iceIters: 30, relax: 0.5, smin: 1e-3, iceTol: 0.01, Hmin: 10, eroSmooth: true, steadySlopeMax: 0.6,
+    Kq: 0, iceIters: 30, relax: 0.5, smin: 1e-3, iceTol: 0.01, Hmin: 10, eroSmooth: true, Hf: 100, phiSub: 0, Sc: 0.8,
     litho: null, contrastK: 5, contrastKg: 5,
     dt: 500
   };
@@ -67,15 +67,15 @@
       p: p, t: 0, N: N, ds: ds,
       s: new Float32Array(N), z: new Float32Array(N), ucum: new Float32Array(N),
       H: new Float32Array(N), Us: new Float32Array(N), q: new Float32Array(N), b: new Float32Array(N),
-      Ef: new Float32Array(N), Eg: new Float32Array(N), r: new Float32Array(N),
+      Ef: new Float32Array(N), Eg: new Float32Array(N), Er: new Float32Array(N), r: new Float32Array(N),
       A: new Float32Array(N), W: new Float32Array(N),
-      exported: 0, eroFluv: 0, eroGlac: 0, upliftVol: 0, iceIters: 0,
+      exported: 0, eroFluv: 0, eroGlac: 0, eroRock: 0, upliftVol: 0, iceIters: 0,
       history: []
     };
     // scratch (doubles)
     var Hn = new Float64Array(N), Q = new Float64Array(N), bb = new Float64Array(N), zz = new Float64Array(N);
     var h0 = new Float64Array(N), Qs = new Float64Array(N), fK = new Float64Array(N), fKg = new Float64Array(N), fac = new Float64Array(N);
-    var iceMask = new Uint8Array(N);
+    var iceMask = new Uint8Array(N), wfl = new Float64Array(N);
 
     var rng = GS.noise.mulberry32(p.seed | 0);
     var i;
@@ -97,7 +97,7 @@
       var zz0 = 0;
       for (i = N - 2; i >= 0; i--) {
         var Ss = Math.pow(p.peakUplift * fac[i] / (p.K * Math.pow(st.A[i], p.m)), 1 / p.nexp);
-        if (Ss > p.steadySlopeMax) { Ss = p.steadySlopeMax; st.steadyCapped++; } // threshold-hillslope cap
+        if (Ss > p.Sc) { Ss = p.Sc; st.steadyCapped++; } // threshold-hillslope cap
         zz0 += ds * Ss;
         st.z[i] = zz0 + (p.noise > 0 ? st.z[i] - (p.zHead * Math.pow(1 - st.s[i] / L, 1.5)) : 0);
       }
@@ -135,10 +135,17 @@
       }
     }
 
+    // Fluvial efficiency under ice: 1 on bare ground, ramping down over the first Hf metres of
+    // ice to a floor phiSub (subglacial meltwater). A binary on/off at the margin made each cell
+    // the terminus vacated take a burst of incision and left a cell-scale sawtooth in bed and ice.
+    function fluvialWeight(H) {
+      var r = 1 - H / p.Hf; if (r < 0) r = 0; if (r > 1) r = 1;
+      return p.phiSub + (1 - p.phiSub) * r;
+    }
     // Implicit Yuan erosion–deposition along the line (receiver = downstream node).
     function fluvialStep() {
       var z = st.z, A = st.A, W = st.W, dt = p.dt, G = p.G, k;
-      for (k = 0; k < N; k++) h0[k] = z[k];
+      for (k = 0; k < N; k++) { h0[k] = z[k]; wfl[k] = fluvialWeight(st.H[k]); }
       var OMEGA = G > 0 ? 0.6 : 1.0; // relax only while iterating the deposition feedback
       var maxIter = G <= 0 ? 1 : Math.min(25, Math.ceil(2 + G * 20));
       for (var it = 0; it < maxIter; it++) {
@@ -146,10 +153,10 @@
         for (k = 0; k < N - 1; k++) Qs[k + 1] += Qs[k] + (h0[k] - z[k]) * ds * W[k] / dt;
         var maxd = 0;
         for (k = N - 2; k >= 0; k--) {
-          if (iceMask[k]) continue;
+          if (wfl[k] <= 0) continue;
           var hr = z[k + 1];
           var dep = dt * G * Qs[k] / A[k];
-          var Kp = p.K * fK[k] * Math.pow(A[k], p.m);
+          var Kp = p.K * fK[k] * wfl[k] * Math.pow(A[k], p.m);
           var nh = laws.yuanNode(h0[k], z[k], hr, Kp, dt, ds, dep, p.nexp, false);
           nh = z[k] + OMEGA * (nh - z[k]);
           var dd = nh - z[k]; if (dd < 0) dd = -dd; if (dd > maxd) maxd = dd;
@@ -201,7 +208,8 @@
         for (k = 0; k < N; k++) {
           // erosion footprint [¼ ½ ¼]: glacial erosion acts over an ice-thickness-scale patch,
           // not one cell; it also removes the two-cell (checkerboard) mode of the E ∝ 1/H feedback.
-          var Es = (p.eroSmooth && k > 0 && k < N - 1) ? 0.25 * Eraw[k - 1] + 0.5 * Eraw[k] + 0.25 * Eraw[k + 1] : Eraw[k];
+          var Es = !p.eroSmooth ? Eraw[k] : (k > 0 && k < N - 1) ? 0.25 * Eraw[k - 1] + 0.5 * Eraw[k] + 0.25 * Eraw[k + 1]
+                 : (k === 0 ? 0.5 * (Eraw[0] + Eraw[1]) : 0.5 * (Eraw[N - 2] + Eraw[N - 1]));
           Es = laws.capRate(Es, p.eroCap);
           if (k === N - 1) Es = 0;
           st.Eg[k] = Es;
@@ -213,6 +221,18 @@
       }
       // 3. fluvial on ice-free nodes
       fluvialStep();
+      // 4. threshold-slope failure (headwall retreat / step collapse): no cell may stand steeper than
+      //    Sc above its downstream neighbour, ice or no ice (a 100 m cell step steeper than Sc is
+      //    treated as unstable: rockfall subaerially, block failure of the step under ice); the
+      //    excess is removed and exported (debris evacuated by the glacier / river below —
+      //    asserted). Sweep from the outlet up so each receiver is final.
+      var lim = p.Sc * ds, rock = 0;
+      for (k = 0; k < N; k++) st.Er[k] = 0;
+      for (k = N - 2; k >= 0; k--) {
+        var ex = z[k] - z[k + 1] - lim;
+        if (ex > 0) { z[k] -= ex; rock += ex * ds * st.W[k]; st.Er[k] = ex / dt; }
+      }
+      st.eroRock += rock;
       st.t += dt;
     }
 
@@ -235,7 +255,7 @@
       var dV = 0;
       for (k = 0; k < N; k++) dV += (z[k] - st.z0[k]) * ds * st.W[k];
       return { t: st.t, relief: zmax - zmin, zmax: zmax, iceVol: vol, terminus: term, maxH: hmax,
-               closure: st.upliftVol - st.eroFluv - st.eroGlac - dV, upliftVol: st.upliftVol };
+               closure: st.upliftVol - st.eroFluv - st.eroGlac - st.eroRock - dV, upliftVol: st.upliftVol };
     }
 
     function record() { st.history.push(diagnostics()); }

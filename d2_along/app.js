@@ -18,63 +18,102 @@
     return h;
   }
   var m = {
-    L: M("Valley length L", ["s ∈ [0, L], node spacing ds = L/(N − 1)"], "s = 0 is the divide (valley head), s = L the outlet at fixed base level z = 0.", null, "asserted"),
-    N: M("Nodes N", ["ds = L / (N − 1)"], "Resolution of the profile. 301 nodes on 30 km is 100 m.", null, "asserted"),
+    L: M("Valley length L", ["s ∈ [0, L],  ds = L / (N − 1)"],
+      "How long the modelled valley is, from the divide (left, s = 0) to the outlet (right, s = L), which sits at fixed base level. Longer valleys gather more drainage area and more ice, so both the river and the glacier get stronger downstream; the glacier's terminus and the fluvial relief scale with it.", null, "asserted"),
+    N: M("Nodes N", ["ds = L / (N − 1)"],
+      "The number of cells along the profile. More nodes resolve narrower features (cirque steps, thin termini) but each step costs proportionally more. 301 nodes on 30 km is a 100 m cell, about the scale at which the process laws here stop being meaningful.", null, "asserted"),
     initProfile: M("Initial profile", ["steady: S = (U<sub>peak</sub> f / K A<sup>m</sup>)<sup>1/n</sup> integrated up from the outlet", "linear: z = z<sub>head</sub>(1 − s/L)", "concave: z = z<sub>head</sub>(1 − s/L)<sup>1.5</sup>"],
-      "The fluvial steady state (default) starts the river in equilibrium with the peak uplift, so anything that then happens is the glacier's doing. Its slope is capped at 0.6 (a threshold hillslope): where U/(K A<sup>m</sup>) asks for more, the profile is at threshold and not in fluvial equilibrium. The other two are far from equilibrium and incise fast at first. Noise adds seeded Gaussian roughness. Head elevation applies to linear and concave only.", null, "asserted"),
-    zHead: M("Head elevation", ["z(0, 0) = z<sub>head</sub>"], null, null, "asserted"),
-    noise: M("Profile noise σ", ["z += σ·𝒩(0,1) (seeded)"], null, null, "asserted"),
-    shape: M("Uplift forcing U(t)", ["U(t) = U<sub>peak</sub> s(t)"], "Event shapes on [0, T]: bell, plateau, pulse, arc, triangle, square. The outlet does not uplift (fixed base level).", "core/forcing.js", "asserted"),
-    peakUplift: M("Peak rock-uplift rate", ["U<sub>peak</sub>"], null, null, "asserted"),
-    duration: M("Event duration T", ["s(t) = 0 for t > T"], null, null, "asserted"),
-    pattern: M("Spatial uplift pattern", ["U(s, t) = U(t) · f(s/L)"], "uniform 1; ramp rises from the ends; gaussian peaks mid-profile; tilt rises toward the outlet (f = s/L) — or toward the head when combined with a low head.", "core/forcing.js spatialFactor", "asserted"),
-    KExp: M("Fluvial erodibility K", ["E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup>  (× lithology factor)", "steady state: S = (U / K A<sup>m</sup>)<sup>1/n</sup>"],
-      "Detachment-limited stream power, solved implicitly node by node from the outlet upstream (Braun & Willett 2013; Yuan et al. 2019 with deposition). Only ice-free nodes are fluvial.", "core/laws.js yuanNode; validated: steady slope–area law exact, closure to round-off", "computed"),
-    m: M("Area exponent m", ["E<sub>f</sub> ∝ A<sup>m</sup>"], "Concavity θ = m/n with Hack's law gives S ∝ s<sup>−h m/n</sup>.", null, "asserted"),
-    nexp: M("Slope exponent n", ["E<sub>f</sub> ∝ S<sup>n</sup>"], "n ≠ 1 uses Newton iteration inside the implicit update.", null, "asserted"),
-    G: M("Deposition coefficient G", ["dz/dt = −K A<sup>m</sup> S<sup>n</sup> + G Q<sub>s</sub>/A"], "G = 0: pure detachment-limited. G > 0: eroded sediment (volume flux Q<sub>s</sub>) is re-deposited downstream; iterated Gauss–Seidel, mass-conserving by construction.", "Yuan et al. 2019", "asserted"),
-    hack: M("Hack exponent h", ["A(s) = k<sub>a</sub> (s + s<sub>0</sub>)<sup>h</sup>"], "The profile does not resolve its basin: drainage area is asserted from Hack's law L = 1.4 A<sup>0.6</sup> (h = 1/0.6, k<sub>a</sub> = 5.7 in m units).", "Hack 1957", "asserted"),
-    W0: M("Valley width at the head W<sub>0</sub>", ["W(s) = W<sub>0</sub> + k<sub>w</sub> s"], "Ice flux Q = ∫ b W ds and the flux per unit width q = Q/W both need a width; the profile cannot resolve it.", null, "asserted"),
-    kw: M("Valley width growth k<sub>w</sub>", ["W(s) = W<sub>0</sub> + k<sub>w</sub> s"], null, null, "asserted"),
+      "The shape of the valley at t = 0. The fluvial steady state (default) starts the river in equilibrium with the peak uplift, so anything that then happens is the glacier's doing. Its slope is capped at the threshold slope S<sub>c</sub>: where U/(K A<sup>m</sup>) asks for more, the profile is at threshold and not in fluvial equilibrium, and the readout says so. Linear and concave are far from equilibrium and incise fast at first, which is useful for watching a river adjust. Head elevation applies to those two only.", null, "asserted"),
+    zHead: M("Head elevation", ["z(0, 0) = z<sub>head</sub>"],
+      "How high the divide starts (linear and concave profiles only). Higher heads put more of the valley above the ELA and grow a bigger initial glacier; they also mean steeper initial slopes and faster early incision.", null, "asserted"),
+    noise: M("Profile noise σ", ["z += σ · 𝒩(0, 1), seeded"],
+      "Small random roughness added to the initial bed. Zero gives a smooth profile; a few metres seeds the small bumps that quarrying and overdeepening can amplify, which is how a uniform bed learns to make steps.", null, "asserted"),
+    shape: M("Uplift forcing shape U(t)", ["U(t) = U<sub>peak</sub> · s(t),  s ∈ [0, 1]"],
+      "The time history of rock uplift. Constant holds the peak rate for the whole event; bell, plateau, pulse, arc and triangle rise and fall within the event duration so you can watch relief lag the forcing and decay after it. The outlet never uplifts: it is the fixed base level everything else is measured against.", "core/forcing.js", "asserted"),
+    peakUplift: M("Peak rock-uplift rate", ["U<sub>peak</sub>  (mm/yr = km/Myr)"],
+      "How fast rock rises past base level at the height of the event. This is the engine of the whole run: at steady state every erosion process together must remove exactly this much. Doubling it doubles the steady fluvial slope (for n = 1) and pushes more of the valley up through the ELA. Active ranges sit at 0.5–10 mm/yr.", null, "asserted"),
+    duration: M("Event duration T", ["s(t) = 0 for t > T"],
+      "How long the uplift event lasts. After it the profile relaxes under erosion alone, so relief and the glacier both decay; a short event against a slow river never reaches steady state.", null, "asserted"),
+    pattern: M("Spatial uplift pattern", ["U(s, t) = U(t) · f(s/L)"],
+      "Where along the valley the uplift is concentrated. Uniform lifts everything equally; ramp lifts the middle and not the ends; gaussian peaks mid-valley; tilt rises toward the outlet, i.e. uplift is strongest near base level. Non-uniform patterns change where the river steepens and where ice accumulates.", "core/forcing.js spatialFactor", "asserted"),
+    KExp: M("Fluvial erodibility K", ["E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup>  (× lithology factor)", "steady state:  S = (U / K A<sup>m</sup>)<sup>1/n</sup>"],
+      "How easily the river cuts rock. It sets the relief a given uplift can hold: for n = 1 the steady slope is inversely proportional to K, so lowering K by 10 makes a range 10× higher. Very low K asks for slopes steeper than rock can stand and the profile sits at threshold instead. Solved implicitly node by node from the outlet upstream, on ice-free nodes only. Typical values 10<sup>−6</sup>–10<sup>−5</sup> in these units.", "Braun & Willett 2013; Yuan et al. 2019; validated: steady slope–area law exact, closure to round-off", "computed"),
+    m: M("Area exponent m", ["E<sub>f</sub> ∝ A<sup>m</sup>"],
+      "How strongly discharge (via drainage area) drives incision. Larger m makes the lower valley erode much faster than the head and so makes the steady profile more concave; the concavity θ = m/n. Usually 0.4–0.6.", null, "asserted"),
+    nexp: M("Slope exponent n", ["E<sub>f</sub> ∝ S<sup>n</sup>"],
+      "How nonlinearly incision responds to steepness. n = 1 is the linear stream-power law; larger n makes steep reaches erode disproportionately faster, so knickpoints sharpen and relief responds less than proportionally to uplift. n ≠ 1 needs a Newton iteration inside the implicit update.", null, "asserted"),
+    G: M("Deposition coefficient G", ["dz/dt = −K A<sup>m</sup> S<sup>n</sup> + G Q<sub>s</sub>/A"],
+      "How much of the eroded sediment is laid back down downstream instead of being carried out. G = 0 is purely detachment-limited: everything eroded leaves at once. Larger G fills low-gradient reaches and lets a valley floor aggrade below a fast-eroding reach. Mass-conserving by construction.", "Yuan et al. 2019", "asserted"),
+    Hf: M("Fluvial shut-off thickness H<sub>f</sub>", ["w(H) = φ<sub>sub</sub> + (1 − φ<sub>sub</sub>) · max(0, 1 − H/H<sub>f</sub>),   K → K · w"],
+      "How thick the ice must be before it fully protects the bed from the river. Fluvial efficiency is 1 on bare ground and ramps down to the subglacial floor over the first H<sub>f</sub> metres of ice, instead of switching off at the first cell with ice. The switch was a cell-scale defect: each cell the terminus vacated as the ELA cycled took a burst of incision before ice returned, leaving a sawtooth in bed and ice thickness at the margin. The ramp reads as meltwater under thin marginal ice. 50–150 m; larger is smoother.", null, "asserted"),
+    phiSub: M("Subglacial fluvial efficiency φ<sub>sub</sub>", ["w(H ≥ H<sub>f</sub>) = φ<sub>sub</sub>"],
+      "How much river incision continues under thick ice: subglacial meltwater channels erode too. 0 means thick ice fully protects the bed; 0.2–0.5 lets the subglacial river keep pace with part of the uplift, which shrinks the step that forms at a terminus where glacial erosion is weak.", "subglacial meltwater erosion: Beaud et al. 2014; Herman et al. 2011", "asserted"),
+    hack: M("Hack exponent h", ["A(s) = k<sub>a</sub> (s + s<sub>0</sub>)<sup>h</sup>"],
+      "How fast drainage area grows downstream along the profile. The profile cannot see its basin, so area is asserted from Hack's law (L = 1.4 A<sup>0.6</sup> gives h = 1/0.6 = 1.67). Larger h means area, and so discharge and incision, grow faster with distance; the steady profile becomes more concave.", "Hack 1957", "asserted"),
+    W0: M("Valley width at the head W<sub>0</sub>", ["W(s) = W<sub>0</sub> + k<sub>w</sub> s"],
+      "How wide the valley floor is at the divide. Width matters twice for ice: the flux gathered per unit length is b·W, and the flux per unit width that sets thickness is Q/W. A wider head gathers more ice; a wider trunk spreads the same flux thinner and slower.", null, "asserted"),
+    kw: M("Valley width growth k<sub>w</sub>", ["W(s) = W<sub>0</sub> + k<sub>w</sub> s"],
+      "How much wider the valley gets per metre downstream. Zero is a canal of constant width; 0.05 makes a 300 m head into a 1.8 km trunk at 30 km. Faster widening thins and slows the trunk glacier for a given balance, weakening erosion there.", null, "asserted"),
     glacierOn: M("Glacier: steady ice discharge  (outlet: free outflow, Γ′H<sup>5</sup>S<sub>bed</sub><sup>3</sup> = q)", [
         "b(z<sub>s</sub>) = β (z<sub>s</sub> − ELA) above, 2.5 β (z<sub>s</sub> − ELA) below, clamped",
         "Q(s) = ∫<sub>0</sub><sup>s</sup> b W ds, clamped ≥ 0 → terminus",
         "Γ′ H<sub>f</sub><sup>n+2</sup> S<sub>f</sub><sup>n</sup> = Q/W<sub>f</sub> at each face, Γ′ = Γ/(1 − f<sub>s</sub>), n = 3",
-        "U<sub>s</sub> = f<sub>s</sub> q / H"],
-      "Ice equilibrates instantly on geomorphic timescales, so each step solves the steady glacier: balance on the ice surface → routed flux → thickness by marching upstream from the outlet, solving the face flux law for H at each node (monotone → unique root). A few outer iterations couple surface and balance. Validated against an explicit flowline SIA run to steady state: thickness within 2 %, same terminus, on linear, concave and bumped beds.",
-      "SIA: Glen n = 3, A = 7.57×10<sup>−17</sup> Pa<sup>−3</sup> yr<sup>−1</sup>; flowline models: MacGregor et al. 2000, Anderson et al. 2006", "computed"),
-    elaBase: M("ELA (interglacial)", ["ELA(t) = ELA<sub>0</sub> − A<sub>ELA</sub> · ½(1 − cos 2πt/P)"], "Referenced to the ice surface z + H (surface feedback kept, legacy decision).", null, "asserted"),
-    elaAmp: M("ELA cycle amplitude", ["ELA<sub>min</sub> = ELA<sub>0</sub> − A<sub>ELA</sub>"], null, null, "asserted"),
-    elaPeriod: M("ELA cycle period", ["P"], null, null, "asserted"),
-    balGrad: M("Balance gradient β", ["b = β (z<sub>s</sub> − ELA) above the ELA; 2.5 β below"], "Accumulation clamps at 2 m/yr, ablation at 8 m/yr.", "asymmetric gradient after legacy terrain_sandbox", "asserted"),
-    fs: M("Sliding fraction f<sub>s</sub>", ["U<sub>s</sub> = f<sub>s</sub> q/H,   q<sub>deformation</sub> = (1 − f<sub>s</sub>) q"], "Share of the depth-averaged speed carried by basal sliding. Erosion follows sliding, so f<sub>s</sub> = 0 gives no glacial erosion.", null, "asserted"),
-    flow: M("Flow-law enhancement", ["Γ → Γ · E"], "Multiplies the Glen rate factor (softer ice → thinner, faster).", null, "asserted"),
+        "U<sub>s</sub> = f<sub>s</sub> q / max(H, H<sub>min</sub>)"],
+      "Turns the glacier on. Ice adjusts in centuries while the bed changes over hundreds of millennia, so every step solves the glacier that is in equilibrium with the current bed: mass balance on the ice surface, summed down-valley to give the flux at every point (where the sum hits zero the glacier ends), then the thickness that carries that flux, marched upstream from the outlet by solving the flow law face by face. A few outer passes couple surface and balance. Validated against an explicit flowline SIA: thickness within 2 %, same terminus.",
+      "SIA: Glen n = 3, A = 7.57×10<sup>−17</sup> Pa<sup>−3</sup> yr<sup>−1</sup>; MacGregor et al. 2000; Anderson et al. 2006", "computed"),
+    elaBase: M("ELA (interglacial)", ["ELA(t) = ELA<sub>0</sub> − A<sub>ELA</sub> · ½(1 − cos 2πt/P)"],
+      "The equilibrium-line altitude in the warm state: above it snow accumulates, below it ice melts. Lower it and more of the valley is accumulation area, so the glacier grows, thickens and reaches further down; raise it above the divide and the glacier vanishes. Referenced to the ice surface, so thicker ice sees a colder surface (a feedback kept from the legacy model).", null, "asserted"),
+    elaAmp: M("ELA cycle amplitude", ["ELA<sub>min</sub> = ELA<sub>0</sub> − A<sub>ELA</sub>"],
+      "How far the ELA drops at the cold end of a glacial cycle. Zero holds the ELA constant; a few hundred metres makes the glacier advance and retreat each cycle, sweeping its erosion up and down the valley. Pleistocene cycles moved ELAs by roughly 500–1000 m.", null, "asserted"),
+    elaPeriod: M("ELA cycle period", ["P"],
+      "The length of one glacial–interglacial cycle. 100 kyr matches the late Pleistocene, 41 kyr the obliquity-paced early Pleistocene. Shorter periods give the glacier less time to reshape the bed per advance.", null, "asserted"),
+    balGrad: M("Balance gradient β", ["b = β (z<sub>s</sub> − ELA) above the ELA; 2.5 β below"],
+      "How quickly mass balance changes with height: how many metres of ice per year are gained per metre above the ELA (and lost 2.5× faster per metre below, the usual asymmetry). Steeper gradients belong to maritime climates and make bigger, faster glaciers for the same ELA; continental glaciers have gradients a few times smaller. Accumulation clamps at 2 m/yr, ablation at 8 m/yr.", "asymmetry after the legacy terrain_sandbox", "asserted"),
+    fs: M("Sliding fraction f<sub>s</sub>", ["U<sub>s</sub> = f<sub>s</sub> q/H,   q<sub>deformation</sub> = (1 − f<sub>s</sub>) q"],
+      "What share of the ice's motion is sliding over the bed rather than deforming internally. Only sliding erodes, so f<sub>s</sub> = 0 gives no glacial erosion at all, and a temperate glacier near 0.8 erodes hard. Sliding also thins the glacier, since less thickness is needed to carry the same flux.", null, "asserted"),
+    flow: M("Flow-law enhancement", ["Γ → Γ · E"],
+      "Multiplies the softness of the ice. Warmer or more damaged ice (E > 1) flows more easily, so the same flux is carried by thinner, faster ice; E < 1 is stiffer, thicker ice. 1 is temperate ice.", null, "asserted"),
     KgExp: M("Glacial erodibility K<sub>g</sub>", ["E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup>  (× lithology factor), capped at 2 cm/yr"],
-      "Abrasion proportional to sliding speed (l = 1). Self-limiting: an overdeepening flattens the surface, thickens the ice and slows sliding. Validated: K<sub>g</sub> × 100 does not run away — it cuts the bed below the ELA and the glacier shuts off.", "Hallet 1979; Humphrey & Raymond 1994", "computed"),
-    lexp: M("Sliding exponent l", ["E<sub>g</sub> ∝ U<sub>s</sub><sup>l</sup>"], "1 (Humphrey & Raymond) to 2 (Hallet).", null, "asserted"),
+      "How much bed is removed per metre of sliding: abrasion by rock in the ice sole. Raising it deepens troughs and overdeepenings faster, but the process self-limits: an overdeepening flattens the ice surface, thickens the ice and slows sliding. At 100× the default the glacier cuts its bed below the ELA and shuts itself off. Typical 10<sup>−4</sup> for l = 1.", "Hallet 1979; Humphrey & Raymond 1994", "computed"),
+    lexp: M("Sliding exponent l", ["E<sub>g</sub> ∝ U<sub>s</sub><sup>l</sup>"],
+      "How nonlinearly erosion grows with sliding speed. l = 1 is proportional (Humphrey & Raymond); l = 2 (Hallet's abrasion law) concentrates erosion where ice moves fastest, sharpening trunk versus tributary contrasts.", null, "asserted"),
     Hmin: M("Minimum sliding thickness H<sub>min</sub>", ["U<sub>s</sub> = f<sub>s</sub> q / max(H, H<sub>min</sub>)"],
-      "Regularises the terminus wedge: q/H diverges as the ice thins to nothing at the last cell, which put a sliding and erosion spike at the glacier front and at the outlet. Ice thinner than H<sub>min</sub> is treated as too thin to slide erosively.", null, "asserted"),
+      "Ice thinner than this is treated as too thin to slide erosively. It is a regularisation with a physical reading: the last few metres of a terminus wedge are cold, crevassed or debris-laden and do not abrade. Without it q/H diverges as the ice thins to nothing at the last cell, and a sliding spike appeared at the glacier front and at the outlet. 5–20 m is reasonable.", null, "asserted"),
     eroSmooth: M("Erosion footprint [¼ ½ ¼]", ["E<sub>g,i</sub> ← ¼E<sub>i−1</sub> + ½E<sub>i</sub> + ¼E<sub>i+1</sub>"],
-      "Glacial erosion acts over an ice-thickness-scale patch, not one 100 m cell. The filter also removes the two-cell checkerboard exactly: with E ∝ 1/H and a face law that averages neighbouring thicknesses, odd and even nodes otherwise decouple and the bed develops a cell-scale sawtooth. Off shows the raw law.", null, "asserted"),
-    KqExp: M("Quarrying on convexity K<sub>q</sub>", ["E<sub>q</sub> = K<sub>q</sub> U<sub>s</sub> · max(−∂²z/∂s², 0)"], "The hypothesis-A knob: extra erosion where the bed is convex-up under sliding ice. Off by default (slider at minimum).", "DESIGN.md §4", "asserted"),
+      "Spreads each cell's glacial erosion over its two neighbours, on the grounds that abrasion under ice a hundred metres thick acts over a patch that size, not a single 100 m cell. It also annihilates the two-cell checkerboard exactly: with erosion ∝ 1/H and a face law that averages neighbouring thicknesses, odd and even cells can otherwise decouple. Off shows the raw law.", null, "asserted"),
+    KqExp: M("Quarrying on convexity K<sub>q</sub>", ["E<sub>q</sub> = K<sub>q</sub> U<sub>s</sub> · max(−∂²z/∂s², 0)"],
+      "Extra erosion where the bed is convex-up under sliding ice, the plucking of steps and bumps. This is the knob hypothesis A needs: it planes off high convexities under deep ice. Off by default (slider at its minimum); with it on, riegels and cirque lips erode preferentially and small bumps in the bed get removed rather than amplified.", "DESIGN.md §4", "asserted"),
     lithoType: M("Resistant body (material frame)", ["z<sub>m</sub> = z − U<sub>cum</sub>(s)", "layer: z<sub>m</sub> ∈ [top − T, top];  dike: |s − s<sub>0</sub>| < w/2;  slab: top + dip·s"],
-      "Strength lives on material coordinates and rides up with uplift; the surface value r(s) multiplies K and K<sub>g</sub> by 1/(1 + r(c − 1)). Drawn as a brown overlay where the surface is in the body.", "core/lithology.js", "asserted"),
-    lithoTop: M("Body top (material height)", ["top (m above base level in the initial frame)"], null, null, "asserted"),
-    lithoThick: M("Body thickness / dike width", ["T (layer, slab) or w (dike)"], null, null, "asserted"),
-    lithoPos: M("Dike position / slab dip", ["dike: s<sub>0</sub> = x·L;  slab: dip = x (m/m)"], null, null, "asserted"),
-    contrastK: M("Fluvial contrast c", ["K → K / (1 + r(c − 1))"], null, null, "asserted"),
-    contrastKg: M("Glacial contrast c<sub>g</sub>", ["K<sub>g</sub> → K<sub>g</sub> / (1 + r(c<sub>g</sub> − 1))"], null, null, "asserted"),
-    dt: M("Time step", ["per step: lithology → uplift → steady ice + erosion → fluvial"], "The fluvial solve is implicit and the ice is steady, so dt is limited only by how fast the bed changes. Steady profiles are dt-independent to 0.01 m; a 200 kyr transient differs by ~15 m between 250 and 1000 yr.", null, "asserted"),
-    speed: M("Steps per frame", null, "Animation speed only.", null, null),
-    pProfile: M("Long profile", ["bed z(s), ice surface z + H, ELA(t)"], "Brown: bedrock. Blue fill: ice (steady discharge). Dashed: ELA. Thick brown overlay: surface within the resistant body. The outlet is fixed base level.", null, "computed"),
-    pRates: M("Erosion rates", ["E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup> (ice-free);  E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup> (+ quarrying) under ice;  U(s, t) dashed"], null, null, "computed"),
-    pIce: M("Ice: sliding speed and thickness", ["U<sub>s</sub> = f<sub>s</sub> q/H (m/yr);  H (m, right axis not drawn — see profile)"], "Sliding speed drives erosion. Where H = 0 there is no ice.", null, "computed"),
-    pHist: M("History", ["relief = max z − min z;  ice volume = Σ H W ds"], "Time series of the run. Mass closure (uplift − erosion − Δvolume) is in the readout.", null, "computed"),
+      "A body of harder rock inside the valley. It is defined in material coordinates, so it rides up with uplift and gets exposed once erosion has removed everything above it; where the surface is inside it, erosion is divided by the contrasts. A layer is horizontal, a slab dips along the valley, a dike is a vertical band at one position. Drawn as a brown overlay where the surface is in the body.", "core/lithology.js", "asserted"),
+    lithoTop: M("Body top (material height)", ["top  (m above base level, in the initial frame)"],
+      "How high the top of the body sits in the initial material frame. Put it below the initial surface and it emerges later as the valley cuts down and the rock rises; put it above and it is exposed from the start.", null, "asserted"),
+    lithoThick: M("Body thickness / dike width", ["T (layer, slab)  or  w (dike)"],
+      "How much resistant rock there is to get through. A thin layer is stripped and its effect is a passing episode; a thick one persists for the whole run. For hypothesis B the question is whether it outlasts the uplift event.", null, "asserted"),
+    lithoPos: M("Dike position / slab dip", ["dike: s<sub>0</sub> = x·L;  slab: dip = 0.2 x (m/m, rising toward the divide)"],
+      "For a dike, where along the valley it sits (0 = divide, 1 = outlet). For a slab, how steeply it dips, so that it is exposed at different heights in different reaches.", null, "asserted"),
+    contrastK: M("Fluvial contrast c", ["K → K / (1 + r(c − 1))"],
+      "How much harder the body is for the river than the surrounding rock: c = 5 means it erodes five times slower. Steady slopes across it are c<sup>1/n</sup> times steeper, so a dike makes a knickzone and a layer makes a bench.", null, "asserted"),
+    contrastKg: M("Glacial contrast c<sub>g</sub>", ["K<sub>g</sub> → K<sub>g</sub> / (1 + r(c<sub>g</sub> − 1))"],
+      "The same body's resistance to glacial abrasion, set separately because rocks resist plucking and abrasion differently than fluvial incision. A body that is glacially hard but fluvially soft is exactly the case that separates the two hypotheses.", null, "asserted"),
+    Sc: M("Threshold slope S<sub>c</sub> (rockfall / step failure)", ["every cell:  z<sub>i</sub> ≤ z<sub>i+1</sub> + S<sub>c</sub> ds", "excess removed → rockfall export"],
+      "The steepest slope a 100 m cell may stand at above its downstream neighbour. Anything steeper collapses to the threshold, with the debris assumed evacuated by the glacier or river below. It stands in for headwall retreat and step collapse, processes the profile cannot resolve. Without it the divide cell, which receives almost no ice flux and so cannot be glacially eroded, rises with uplift into a single-cell spire (680 m in 200 kyr in one scenario) that rings the cirque floor below. The same value caps the steady initial profile. 0.6–1.0 (30–45°) is a hillslope threshold; cirque headwalls are steeper, but not for 100 m at a time.",
+      "threshold hillslopes: Burbank et al. 1996; DESIGN.md §4 hillslopes", "asserted"),
+    dt: M("Time step", ["per step: lithology → uplift → steady ice + erosion → fluvial → rockfall"],
+      "How much geomorphic time each step covers. The river is solved implicitly and the ice is steady, so the step is limited only by how much the bed may change per solve; steady profiles are dt-independent to 0.01 m and a 200 kyr transient differs by ~15 m between 250 and 1000 yr. Larger steps run faster and smear fast transients.", null, "asserted"),
+    speed: M("Steps per frame", null, "How many model steps run between screen redraws when playing. Only affects animation speed, not the result.", null, null),
+    pProfile: M("Long profile", ["bed z(s), ice surface z + H, ELA(t)"],
+      "The valley seen from the side. Brown: bedrock. Blue fill: the steady glacier. Dashed: the ELA. Thick brown overlay: where the surface is inside the resistant body. The left end is the divide, the right end the outlet at fixed base level. Click anywhere to isolate that node as a d1 column.", null, "computed"),
+    pRates: M("Erosion rates", ["E<sub>f</sub> = K A<sup>m</sup> S<sup>n</sup> (ice-free);  E<sub>g</sub> = K<sub>g</sub> U<sub>s</sub><sup>l</sup> (+ quarrying) under ice;  rockfall (brown dashed, clipped);  U(s, t) grey dashed"],
+      "How fast each process lowers the bed at every point, against the uplift rate. Where a curve sits on the uplift line that reach is in steady state; above it the bed is being lowered net, below it is rising. Under thin marginal ice both act, the river at reduced efficiency.", null, "computed"),
+    pIce: M("Sliding speed", ["U<sub>s</sub> = f<sub>s</sub> q / max(H, H<sub>min</sub>)  (m/yr)"],
+      "How fast the ice slides over its bed at every point. This is what erodes: glacial erosion is proportional to it. It rises down the accumulation area as flux grows, peaks where the ice is fast and not too thick, and falls to zero at the terminus.", null, "computed"),
+    pHist: M("History", ["relief = max z − min z;  ice volume = Σ H W ds"],
+      "How the run has evolved so far: total relief (solid) and ice volume (dashed, scaled to the panel). Mass closure (uplift − erosion − Δvolume) is in the readout.", null, "computed"),
     pLink: M("Isolated column at the selected node  (d1 ↔ d2 link)", [
         "frozen at the click: z<sub>down</sub>, H<sub>down</sub>, Q, A, W, W<sub>f</sub>, ds",
         "running: U(t)·f(s), lithology r(z − U<sub>cum</sub>), slope against z<sub>down</sub>, H from the face law against z<sub>down</sub> + H<sub>down</sub>",
         "divergence = z<sub>2D</sub>(t) − z<sub>1D</sub>(t)"],
-      "Click the long profile to pick a node. Solid: the node's real elevation as the profile runs. Dashed: the same node run as an isolated d1 column with the same laws, where everything that came from its neighbours is held at the click-time value and badged asserted. The two curves start together; how far and how fast they part is the answer to “how much behaviour arises from the extra dimension”. Note the ELA acts on a node only through the ice flux, which is adjacency — so the isolated column is blind to glacial cycles. “Open in d1” shows this column standalone with its constants as sliders.",
+      "Click the long profile to pick a node. Solid: the node's real elevation as the profile runs. Dashed: the same node run as an isolated d1 column with the same laws, where everything that came from its neighbours is held at the click-time value and badged asserted. The two curves start together; how far and how fast they part is the answer to “how much behaviour arises from the extra dimension”. The ELA acts on a node only through the ice flux, which is adjacency, so the isolated column is blind to glacial cycles. “Open in d1” shows this column standalone with its constants as sliders.",
       "py/test_d1_node.py: the column reproduces the 2D node exactly when its adjacency is refreshed every step.", "computed")
   };
 
@@ -94,6 +133,8 @@
     { id: "m", label: "Area exponent m", type: "range", min: 0.3, max: 0.7, step: 0.05, val: 0.5, unit: "", group: "Fluvial", asserted: true, method: m.m },
     { id: "nexp", label: "Slope exponent n", type: "range", min: 1, max: 2, step: 0.25, val: 1, unit: "", group: "Fluvial", asserted: true, method: m.nexp },
     { id: "G", label: "Deposition G", type: "range", min: 0, max: 2, step: 0.1, val: 0, unit: "", group: "Fluvial", asserted: true, method: m.G },
+    { id: "Hf", label: "Fluvial shut-off thickness", type: "range", min: 10, max: 300, step: 10, val: 100, unit: "m", group: "Fluvial", asserted: true, method: m.Hf },
+    { id: "phiSub", label: "Subglacial fluvial efficiency", type: "range", min: 0, max: 1, step: 0.05, val: 0, unit: "", group: "Fluvial", asserted: true, method: m.phiSub },
     { id: "hack", label: "Hack exponent h", type: "range", min: 1.4, max: 2.0, step: 0.05, val: 1.667, unit: "", group: "Fluvial", asserted: true, method: m.hack },
     { id: "W0", label: "Valley width at head", type: "range", min: 50, max: 1000, step: 50, val: 300, unit: "m", group: "Valley geometry", asserted: true, method: m.W0 },
     { id: "kw", label: "Width growth", type: "range", min: 0, max: 0.2, step: 0.01, val: 0.05, unit: "m/m", group: "Valley geometry", asserted: true, method: m.kw },
@@ -115,6 +156,7 @@
     { id: "lithoPos", label: "Dike position / slab dip", type: "range", min: 0, max: 1, step: 0.05, val: 0.5, unit: "", group: "Lithology", asserted: true, method: m.lithoPos },
     { id: "contrastK", label: "Fluvial contrast", type: "range", min: 1, max: 20, step: 0.5, val: 5, unit: "×", group: "Lithology", asserted: true, method: m.contrastK },
     { id: "contrastKg", label: "Glacial contrast", type: "range", min: 1, max: 20, step: 0.5, val: 5, unit: "×", group: "Lithology", asserted: true, method: m.contrastKg },
+    { id: "Sc", label: "Threshold slope (rockfall)", type: "range", min: 0.3, max: 2, step: 0.05, val: 0.8, unit: "", group: "Hillslope", asserted: true, method: m.Sc },
     { id: "dt", label: "Time step", type: "range", min: 100, max: 2000, step: 100, val: 500, unit: "yr", group: "Run", asserted: true, method: m.dt },
     { id: "speed", label: "Steps per frame", type: "range", min: 1, max: 20, step: 1, val: 4, unit: "", group: "Run", method: m.speed }
   ];
@@ -133,7 +175,7 @@
       K: Math.pow(10, state.KExp), m: state.m, nexp: state.nexp, G: state.G, hack: state.hack, W0: state.W0, kw: state.kw,
       glacierOn: !!state.glacierOn, elaBase: U.fromKm(state.elaBase), elaAmp: U.fromKm(state.elaAmp), elaPeriod: U.fromKyr(state.elaPeriod),
       balGrad: state.balGrad, fs: state.fs, flow: state.flow, Kg: Math.pow(10, state.KgExp), lexp: state.lexp,
-      Kq: state.KqExp <= -6 ? 0 : Math.pow(10, state.KqExp), Hmin: state.Hmin, eroSmooth: !!state.eroSmooth, litho: lithoSpec(), contrastK: state.contrastK, contrastKg: state.contrastKg,
+      Kq: state.KqExp <= -6 ? 0 : Math.pow(10, state.KqExp), Hmin: state.Hmin, eroSmooth: !!state.eroSmooth, Hf: state.Hf, phiSub: state.phiSub, Sc: state.Sc, litho: lithoSpec(), contrastK: state.contrastK, contrastKg: state.contrastKg,
       dt: state.dt
     });
     model.primeIce();
@@ -176,7 +218,7 @@
     if (!link) return "#";
     var sp = link.column.spec, q = new URLSearchParams();
     q.set("scenario", "node");
-    ["shape", "peakUplift", "duration", "KExp", "m", "nexp", "KgExp", "lexp", "fs", "flow", "Hmin", "contrastK", "contrastKg", "lithoType", "lithoTop", "lithoThick", "lithoPos", "L", "elaBase", "elaAmp", "elaPeriod", "dt"].forEach(function (id) { q.set(id, state[id]); });
+    ["shape", "peakUplift", "duration", "KExp", "m", "nexp", "KgExp", "lexp", "fs", "flow", "Hmin", "Hf", "phiSub", "contrastK", "contrastKg", "lithoType", "lithoTop", "lithoThick", "lithoPos", "L", "elaBase", "elaAmp", "elaPeriod", "dt"].forEach(function (id) { q.set(id, state[id]); });
     q.set("s", U.toKm(sp.s).toFixed(3)); q.set("z0", U.toKm(sp.z0).toFixed(4)); q.set("zDown", U.toKm(sp.zDown).toFixed(4)); q.set("HDown", sp.HDown.toFixed(2));
     q.set("QExp", sp.Q > 0 ? Math.log10(sp.Q).toFixed(3) : 0); q.set("AExp", Math.log10(sp.A / 1e6).toFixed(3)); q.set("W", sp.W.toFixed(1)); q.set("Wf", sp.Wf.toFixed(1));
     q.set("ds", sp.ds.toFixed(1)); q.set("fac", sp.fac.toFixed(4)); q.set("ucum0", sp.ucum0.toFixed(3)); q.set("t0", sp.t0.toFixed(0)); q.set("runKyr", 500);
@@ -186,7 +228,7 @@
   function draw() {
     var st = model.state, N = st.N, i;
     var rows = [];
-    for (i = 0; i < N; i++) rows.push({ s: st.s[i], z: st.z[i], zs: st.z[i] + st.H[i], H: st.H[i], Us: st.Us[i], Ef: st.Ef[i], Eg: st.Eg[i], r: st.r[i], ela: model.ELA(st.t), u: model.U(st.t) });
+    for (i = 0; i < N; i++) rows.push({ s: st.s[i], z: st.z[i], zs: st.z[i] + st.H[i], H: st.H[i], Us: st.Us[i], Ef: st.Ef[i], Eg: st.Eg[i], Er: st.Er[i], r: st.r[i], ela: model.ELA(st.t), u: model.U(st.t) });
     var Lkm = U.toKm(st.p.L);
     var zMax = ratchetMax("z", d3.max(rows, function (d) { return U.toKm(Math.max(d.zs, state.glacierOn ? d.ela : 0)); }) || 1);
     var eMax = ratchetMax("e", d3.max(rows, function (d) { return U.toMmyr(Math.max(d.Ef, d.Eg, d.u)); }) || 0.1);
@@ -209,6 +251,7 @@
     P.line(pRates, "u", rows, function (d) { return U.toMmyr(d.u); }, C.uplift, true, sKm);
     P.line(pRates, "Ef", rows, function (d) { return U.toMmyr(d.Ef); }, C.fluv, false, sKm);
     P.line(pRates, "Eg", rows, function (d) { return U.toMmyr(d.Eg); }, C.glac, false, sKm);
+    P.line(pRates, "Er", rows, function (d) { return U.toMmyr(Math.min(d.Er, U.fromMmyr(eMax))); }, "#8c6d31", true, sKm);
     // ice
     P.line(pIce, "Us", rows, function (d) { return d.Us; }, C.Us, false, sKm);
     if (link) [pProfile, pRates, pIce].forEach(function (pn) { P.vline(pn, "node", U.toKm(st.s[link.i])); });

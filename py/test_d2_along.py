@@ -110,8 +110,8 @@ check("ice surface never slopes uphill under ice", not np.any((zs[1:] > zs[:-1] 
 # volume bookkeeping of the coupled run: uplift − fluvial − glacial = Δ(bed volume)
 z0 = d2.init_profile(r["p"])[2]
 dV = float(np.sum((r["z"] - z0) * r["ds"] * r["W"]))
-check("coupled volume closure", abs(r["upliftVol"] - r["eroFluv"] - r["eroGlac"] - dV) < 1e-6 * r["upliftVol"],
-      "rel %.1e" % ((r["upliftVol"] - r["eroFluv"] - r["eroGlac"] - dV) / r["upliftVol"]))
+check("coupled volume closure", abs(r["upliftVol"] - r["eroFluv"] - r["eroGlac"] - r["eroRock"] - dV) < 1e-6 * r["upliftVol"],
+      "rel %.1e" % ((r["upliftVol"] - r["eroFluv"] - r["eroGlac"] - r["eroRock"] - dV) / r["upliftVol"]))
 # quarrying: only where the bed is convex-up, and bounded by the cap
 rq = d2.run({"glacierOn": True, "Kg": 1e-4, "Kq": 1e-2, "dt": 500.0, "N": 151}, nsteps=100)
 check("quarrying bounded by cap", rq["Eg"].max() <= 0.02 + 1e-12 and not np.isnan(rq["z"]).any())
@@ -143,10 +143,37 @@ for sm in (True, False):
 alt = np.array([1.0 if i % 2 else 0.0 for i in range(20)]); sm_ = alt.copy(); sm_[1:-1] = 0.25 * alt[:-2] + 0.5 * alt[1:-1] + 0.25 * alt[2:]
 check("[¼ ½ ¼] footprint annihilates a two-cell mode", np.allclose(sm_[1:-1], 0.5))
 r_fp = d2.run(dict(cb, eroSmooth=True), nsteps=100)
-check("footprint conserves volume", abs(r_fp["upliftVol"] - r_fp["eroFluv"] - r_fp["eroGlac"] - float(np.sum((r_fp["z"] - d2.init_profile(r_fp["p"])[2]) * r_fp["ds"] * r_fp["W"]))) < 1e-6 * r_fp["upliftVol"])
+check("footprint conserves volume", abs(r_fp["upliftVol"] - r_fp["eroFluv"] - r_fp["eroGlac"] - r_fp["eroRock"] - float(np.sum((r_fp["z"] - d2.init_profile(r_fp["p"])[2]) * r_fp["ds"] * r_fp["W"]))) < 1e-6 * r_fp["upliftVol"])
+# (d) headwall: the divide cell gets almost no ice flux and would rise into a single-cell spire;
+#     threshold-slope rockfall keeps every ice-free inter-cell slope ≤ Sc, and the cirque floor below stays smooth
+hw = {"N": 301, "dt": 500.0, "Kg": 1e-3}
+r_sc = d2.run(dict(hw, Sc=0.8), nsteps=600); r_no = d2.run(dict(hw, Sc=1e9), nsteps=600)
+S_sc = (r_sc["z"][:-1] - r_sc["z"][1:]) / r_sc["ds"]
+check("threshold failure caps every inter-cell slope at Sc", np.max(S_sc) <= 0.8 + 1e-6, "max slope %.2f; head drop %.0f m (was %.0f m without)" % (np.max(S_sc), r_sc["z"][0] - r_sc["z"][1], r_no["z"][0] - r_no["z"][1]))
+dz2 = lambda r: np.abs(r["z"][1:9] - 2 * r["z"][2:10] + r["z"][3:11]).max()
+check("cirque floor below the headwall stays smooth (|Δ²z| < 15 m)", dz2(r_sc) < 15.0, "|Δ²z| %.0f m with rockfall, %.0f m without" % (dz2(r_sc), dz2(r_no)))
+rep = d2.run(dict(cb, Sc=0.8), nsteps=400)
+check("reported scenario: head drop capped (ice does not exempt the spire)", rep["z"][0] - rep["z"][1] <= 0.8 * rep["ds"] + 1e-6, "drop %.0f m, rock vol %.2e" % (rep["z"][0] - rep["z"][1], rep["eroRock"]))
+check("rockfall volume closes", abs(r_sc["upliftVol"] - r_sc["eroFluv"] - r_sc["eroGlac"] - r_sc["eroRock"] - float(np.sum((r_sc["z"] - d2.init_profile(r_sc["p"])[2]) * r_sc["ds"] * r_sc["W"]))) < 1e-6 * r_sc["upliftVol"] and r_sc["eroRock"] > 0)
 # (c) steady profile slope cap
 sp = d2.make_state(dict(d2.DEFAULTS, K=1e-7, N=151))
-check("steady profile capped at the threshold slope", np.max(-np.diff(sp["z"]) / sp["ds"]) <= 0.6 + 1e-9, "max slope %.3f, head %.0f m" % (np.max(-np.diff(sp["z"]) / sp["ds"]), sp["z"][0]))
+check("steady profile capped at the threshold slope", np.max(-np.diff(sp["z"]) / sp["ds"]) <= 0.8 + 1e-9, "max slope %.3f, head %.0f m" % (np.max(-np.diff(sp["z"]) / sp["ds"]), sp["z"][0]))
+
+# (e) ice-margin handoff: the reported low-Kg scenario with a cycling ELA. With a binary fluvial
+#     on/off at the margin, ice thickness zig-zagged cell to cell (5 sign changes over the last
+#     ~15 ice cells) and the bed carried a 31 m sawtooth; the efficiency ramp removes the zig-zag.
+mg = {"L": 30000.0, "N": 301, "initProfile": "steady", "peakUplift": 1e-3, "K": 1e-7, "m": 0.6, "G": 1.8, "hack": 2.0,
+      "W0": 300.0, "kw": 0.2, "elaBase": 1700.0, "elaAmp": 150.0, "elaPeriod": 1e5, "Kg": 10 ** -5.3, "dt": 500.0}
+r_mg = d2.run(mg, nsteps=600); Hm = r_mg["H"]; zm = r_mg["z"]
+term = np.max(np.where(Hm > 1)[0]); win = slice(max(3, term - 10), term + 6)
+dHm = np.diff(Hm[win]); hz = int(np.sum(np.sign(dHm[1:]) != np.sign(dHm[:-1])))
+d2m = zm[:-2] - 2 * zm[1:-1] + zm[2:]; d2w = np.abs(d2m[win.start - 1:win.stop - 1]).max()
+check("ice margin: thickness has no cell-scale zig-zag", hz <= 1, "%d sign changes in ΔH over the margin (was 5)" % hz)
+check("ice margin: bed |Δ²z| < 15 m", d2w < 15.0, "%.1f m (was 31 m)" % d2w)
+check("fluvial spike at the terminus ≤ 1.6 U", r_mg["Ef"].max() <= 1.6e-3, "Ef max %.2e (was 2.5e-3)" % r_mg["Ef"].max())
+check("margin closure", abs(r_mg["upliftVol"] - r_mg["eroFluv"] - r_mg["eroGlac"] - r_mg["eroRock"] - float(np.sum((zm - d2.init_profile(r_mg["p"])[2]) * r_mg["ds"] * r_mg["W"]))) < 1e-6 * r_mg["upliftVol"])
+# the ramp is inert on bare ground and under thick ice (default phiSub = 0)
+check("fluvial weight: 1 on bare ground, 0 under thick ice", d2.fluvial_weight(np.array([0.0, 50.0, 100.0, 500.0]), r_mg["p"]).tolist() == [1.0, 0.5, 0.0, 0.0])
 
 # ---- 4. Lithology in the profile ----
 # A dike (persistent band in s) with contrast c: at fluvial steady state E = U everywhere,
