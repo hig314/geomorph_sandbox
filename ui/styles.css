@@ -1,0 +1,105 @@
+/* ui/styles.css — shared look for every tier (from legacy/uplift_sandbox/styles.css). */
+:root {
+  --bg: #fafafa;
+  --panel-bg: #ffffff;
+  --ink: #222;
+  --muted: #666;
+  --line: #e2e2e2;
+  --accent: #2c7fb8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.4;
+}
+header { padding: 18px 24px 6px; max-width: 1180px; margin: 0 auto; }
+header h1 { margin: 0 0 4px; font-size: 20px; }
+header h1 .tier { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 8px; }
+header p { margin: 0; color: var(--muted); font-size: 13px; max-width: 800px; }
+nav.tiers { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+nav.tiers a { color: var(--accent); text-decoration: none; margin-right: 10px; }
+nav.tiers a.current { font-weight: 600; color: var(--ink); }
+nav.tiers a.todo { color: #aaa; pointer-events: none; }
+
+.layout {
+  display: flex; gap: 24px; align-items: flex-start;
+  padding: 12px 24px 40px; max-width: 1180px; margin: 0 auto; flex-wrap: wrap;
+}
+#charts {
+  background: var(--panel-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 8px 4px; flex: 1 1 760px;
+  position: sticky; top: 12px; align-self: flex-start; /* stays in view while the sidebar scrolls */
+}
+.panel { display: block; width: 100%; height: auto; }
+.panel + .panel { border-top: 1px dashed var(--line); }
+
+/* Controls */
+#sidebar { flex: 0 1 280px; min-width: 240px; }
+#controls {
+  background: var(--panel-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px;
+}
+#controls fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px 2px; margin: 0 0 10px; }
+#controls legend { font-size: 11px; color: var(--muted); padding: 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.control { margin-bottom: 12px; }
+.control label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.control.check label { display: flex; align-items: center; gap: 4px; }
+.control .val { color: var(--ink); font-weight: 600; }
+.control input[type="range"] { width: 100%; }
+.control select {
+  width: 100%; padding: 5px; font-size: 13px; border: 1px solid var(--line); border-radius: 5px; background: #fff;
+}
+.control .note { font-size: 11px; color: #888; margin-top: 2px; }
+.badge {
+  display: inline-block; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle;
+}
+.badge.asserted { background: #fff3cd; color: #8a6d1d; border: 1px solid #ecd58a; }
+
+#readout {
+  margin-top: 14px; font-size: 12px; color: var(--muted);
+  background: var(--panel-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+#readout b { color: var(--ink); }
+
+.legend { font-size: 11px; color: var(--muted); margin-top: 12px; }
+.legend span { display: inline-flex; align-items: center; margin-right: 12px; }
+.legend i { width: 16px; height: 0; border-top: 2px solid currentColor; display: inline-block; margin-right: 4px; }
+.legend i.dash { border-top-style: dashed; }
+
+.buttons { display: flex; gap: 8px; margin-bottom: 10px; }
+.buttons button {
+  flex: 1; padding: 6px 8px; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer;
+}
+.buttons button:hover { background: #f0f0f0; }
+
+/* SVG axes */
+.axis path, .axis line { stroke: #ccc; }
+.axis text { fill: var(--muted); font-size: 10px; }
+.axis-label { fill: var(--muted); font-size: 11px; }
+.panel-title { font-size: 12px; font-weight: 600; }
+.endlabel { font-size: 10px; font-weight: 600; }
+
+footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 30px; font-size: 11px; color: var(--muted); }
+footer code { background: #eee; padding: 1px 4px; border-radius: 3px; }
+
+/* Methodology tooltips (ui/tooltip.js) */
+.tip-glyph { color: var(--accent); cursor: help; margin-left: 5px; font-size: 12px; vertical-align: middle; }
+.panel-title.has-tip { cursor: help; }
+.gs-tip {
+  position: fixed; z-index: 1000; pointer-events: none;
+  background: #fffdf7; color: var(--ink); border: 1px solid #d9d2b8; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 10px 12px; font-size: 12px; line-height: 1.45;
+}
+.gs-tip h4 { margin: 0 0 4px; font-size: 12px; }
+.gs-tip .eq {
+  display: block; font-family: "Times New Roman", Times, serif; font-size: 14px; margin: 5px 0 5px 8px; white-space: nowrap;
+}
+.gs-tip .src { color: var(--muted); font-size: 11px; margin-top: 4px; }
+.gs-tip .tag { display: inline-block; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 0 4px; border-radius: 3px; margin-right: 4px; }
+.gs-tip .tag.asserted { background: #fff3cd; color: #8a6d1d; border: 1px solid #ecd58a; }
+.gs-tip .tag.computed { background: #e2f0e6; color: #23643a; border: 1px solid #b9dcc4; }
+#readout .has-tip { cursor: help; border-bottom: 1px dotted #aaa; }

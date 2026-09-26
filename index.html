@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>geomorph sandbox</title>
+  <link rel="stylesheet" href="ui/styles.css" />
+  <style>
+    .tiers-list { max-width: 1180px; margin: 0 auto; padding: 8px 24px 40px; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .tier-card { background: var(--panel-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; text-decoration: none; color: var(--ink); }
+    .tier-card:hover { border-color: var(--accent); }
+    .tier-card.todo { color: #999; pointer-events: none; }
+    .tier-card h2 { margin: 0 0 4px; font-size: 16px; }
+    .tier-card .coord { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
+    .tier-card p { margin: 0; font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>geomorph sandbox <span class="tier">illustrating geomorphic hypotheses in 1, 2 and 3 dimensions</span></h1>
+    <p>
+      The same process physics implemented as parallel tiers: a column, a cross-valley profile,
+      an along-valley profile, a DEM. Each tier computes what it can resolve and
+      <span class="badge asserted">asserts</span> the rest, and says which is which. First target:
+      the origin of low-angle uplands in glaciated ranges — planation under deep ice versus
+      uplifted lowland convexities. Hover any ⓘ for the equations.
+      Source and methods: <a href="https://github.com/hig314/geomorph_sandbox">github.com/hig314/geomorph_sandbox</a>.
+    </p>
+  </header>
+  <div class="tiers-list">
+    <a class="tier-card" href="d1/index.html">
+      <h2>d1 · Column <span class="coord">z(t)</span></h2>
+      <p>Two lockstep columns under one uplift and ELA history: a weak landscape and a resistant body in the material frame, with an elevation-dependent glacial rate. Relief reservoir kept as a scenario.</p>
+    </a>
+    <a class="tier-card todo" href="d2_along/index.html">
+      <h2>d2 · Along-valley profile <span class="coord">z(s, t)</span></h2>
+      <p>Stream power with Hack's-law area; flowline glacier by steady discharge and thickness inversion; sliding-based erosion. In progress.</p>
+    </a>
+    <a class="tier-card todo" href="d2_across/index.html">
+      <h2>d2 · Cross-valley profile <span class="coord">z(x, t)</span></h2>
+      <p>U-shape carving, creep, threshold slopes, method-of-slices landslides, plateau-margin retreat. Planned.</p>
+    </a>
+    <a class="tier-card todo" href="d3/index.html">
+      <h2>d3 · DEM <span class="coord">z(x, y, t)</span></h2>
+      <p>The full coupling: routed steady-discharge glaciers, per-cell strength, scoop landslides. Planned; the legacy DEM model is the starting point.</p>
+    </a>
+  </div>
+  <footer>Static bundle, no build step. Every numerical scheme is validated in Python (<code>py/</code>) before and after porting.</footer>
+</body>
+</html>

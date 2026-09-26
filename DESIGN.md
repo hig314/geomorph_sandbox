@@ -1,7 +1,8 @@
 # geomorph_sandbox — design and plan
 
-*Status: proposal for discussion (2026-09-25). Nothing below is built yet except the two
-legacy projects it grows from.*
+*Status: plan agreed 2026-09-25. Build-order step 1 (scaffold + shared `core/`, `ui/`,
+`py/`, running d1 page) landed the same day; see `docs/core.md`. Decisions on the §7
+questions are recorded in §8.*
 
 ## 1. Purpose: illustrate hypotheses, not test them
 
@@ -139,14 +140,23 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
 
 ## 6. Build order
 
-1. **Scaffold.** Repo, move legacy in, factor `core/` (forcing, law signatures, lithology) and
-   shared `ui/` from the legacy code. Domain scale becomes a parameter (cell size), so d3 can
-   run 40 km at 100 m as well as 20 km at 50 m.
-2. **d1 upgrades.** Lithology persistence, elevation-dependent glacial rate, two-column A/B.
-   Cheap; forces the law signatures to be right.
+1. **Scaffold.** ✓ *done 2026-09-25.* Repo, legacy moved in, `core/` (forcing, noise,
+   lithology, laws, units) and shared `ui/` (URL state, controls with asserted badges,
+   panels) factored from the legacy code; `py/gs_core.py` mirrors all of core and
+   `py/test_core.py` validates it (66 checks); d1 runs on the shared modules. Domain scale
+   becomes a parameter (cell size) when d3 is migrated in step 5, so it can run 40 km at
+   100 m as well as 20 km at 50 m.
+2. **d1 upgrades.** ✓ *done 2026-09-25.* Two lockstep columns A/B with the resistant body
+   in the material frame, Gaussian buzzsaw round a cycling ELA, asserted coupling
+   `E_sub,B = k z_Aⁿ · f(r_B, c)` (rationale and consequences in `docs/d1.md`); 16 Python
+   checks in `py/test_d1_columns.py`. Every control and panel carries its equations on
+   mouse-over (`ui/tooltip.js`), a practice that continues in every tier.
 3. **d2_along.** Stream power with Hack's law; flowline glacier with the thickness inversion
    validated in Python against a reference SIA; sliding-based erosion; quarrying on convexity.
-   *De-risks the d3 glacier.*
+   *De-risks the d3 glacier.* The reference SIA does not exist yet: no Python mirror of the
+   legacy `glacierStep` was ever checked in, so a flowline SIA mirror is the first task of
+   this step. If pointwise inversion misbehaves at divides, solve the steady flux law as a
+   boundary-value problem along the line instead (cheap in 1-D).
 4. **d2_across.** Harbor-style shaping; creep; threshold slopes; 2D method of slices;
    plateau-edge retreat.
 5. **d3.** Swap the glacier to the routed steady-discharge model; per-cell strength fields;
@@ -162,3 +172,26 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
 - Quarrying-on-convexity: include from the start, or only after the abrasion-only model
   carves convincing valleys?
 - Which tiers get the lockstep A/B view first (cheapest in d1 and d2; d3 doubles the cost).
+
+## 8. Decisions (2026-09-25)
+
+Answers to §7, agreed with the user:
+
+- **d2_along before d2_across.** The glacier is the risky piece and d2_along validates it;
+  landslide slices are low risk.
+- **d1 is two lockstep columns** (A: weak, B: resistant) sharing one forcing. Coupling:
+  B's erosional demand is A's rate, reduced by the lithologic contrast (`docs/d1.md`); the
+  upland freezes once the body is stripped, since destruction is a d2_across process.
+- **Methodology on mouse-over.** Every control, panel and readout shows its equations,
+  what is asserted vs computed, and the source (`ui/tooltip.js`, `method` fields).
+- **Abrasion only first.** Quarrying-on-convexity ships as an off-by-default knob once the
+  abrasion model carves convincing valleys (the decision gate in §4).
+- **Lockstep A/B view** in d1 and both d2 tiers first; d3 later.
+- **d3 grid and cell size are constructor parameters**; keep 400 × 50 m until an ice-cap
+  scenario needs 100 m.
+- **Units:** metres and years internally everywhere; the UI converts (mm/yr, km, Myr) at
+  the edge. See `docs/core.md`.
+- **Module style:** no build step; IIFEs on the `window.GS` namespace, `module.exports` for
+  tests. Every process law lives once in `core/laws.js` and once in `py/gs_core.py`.
+- The legacy "don't retry |q|/H" note does not apply to the steady-discharge glacier
+  (`docs/core.md` explains why).

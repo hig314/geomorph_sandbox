@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>geomorph sandbox — d1 column</title>
+  <link rel="stylesheet" href="../ui/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Column <span class="tier">d1 · z(t)</span></h1>
+    <p>
+      One vertical column, z(t). <b>Two columns</b> under the same uplift and the same
+      equilibrium-line altitude: A is weak rock, the landscape's relief reservoir
+      (dR/dt&nbsp;=&nbsp;U&nbsp;−&nbsp;k·R<sup>n</sup>); B carries a resistant body that rides up
+      with uplift in the material frame (hypothesis B), and both feel an elevation-dependent
+      glacial rate peaking at the ELA (hypothesis A). Hover any
+      <span class="tip-glyph">ⓘ</span> or panel title for the equations. Quantities the column
+      cannot resolve are marked <span class="badge asserted">asserted</span>.
+    </p>
+    <nav class="tiers">
+      <a class="current" href="../d1/index.html">d1 column</a>
+      <a class="todo" href="../d2_along/index.html">d2 along-valley</a>
+      <a class="todo" href="../d2_across/index.html">d2 across-valley</a>
+      <a class="todo" href="../d3/index.html">d3 DEM</a>
+    </nav>
+  </header>
+
+  <div class="layout">
+    <div id="charts"></div>
+    <div id="sidebar">
+      <div id="controls"></div>
+      <div class="legend" id="legend"></div>
+      <div id="readout"></div>
+    </div>
+  </div>
+
+  <footer>
+    Columns: <code>dz/dt = U(t) − E_sub − E_gl</code> with <code>E_sub,B = k·z_A<sup>n</sup>·f(r_B, c)</code>,
+    <code>E_gl = P·exp(−½((z − ELA)/w)²)</code>, body in the material frame <code>z_m = z − U_cum</code>; RK4 in metres and years.
+    Laws in <code>core/laws.js</code>, lithology in <code>core/lithology.js</code>, the columns in <code>d1/model.js</code> (no DOM);
+    validated in <code>py/test_core.py</code> and <code>py/test_d1_columns.py</code>. Methods: <code>docs/d1.md</code>.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="../core/units.js"></script>
+  <script src="../core/forcing.js"></script>
+  <script src="../core/noise.js"></script>
+  <script src="../core/lithology.js"></script>
+  <script src="../core/laws.js"></script>
+  <script src="../ui/tooltip.js"></script>
+  <script src="../ui/urlstate.js"></script>
+  <script src="../ui/controls.js"></script>
+  <script src="../ui/panels.js"></script>
+  <script src="model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
