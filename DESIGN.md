@@ -188,7 +188,30 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
   carves convincing valleys?
 - Which tiers get the lockstep A/B view first (cheapest in d1 and d2; d3 doubles the cost).
 
-## 8. Decisions (2026-09-25)
+## 8. State of play (2026-09-29) — the one dated snapshot in this file
+
+**Built and live** at <https://hig314.github.io/geomorph_sandbox/>: `core/`, `ui/`, d1
+(reservoir, two columns A/B, isolated node), d2_along (steady-discharge glacier validated
+against a reference SIA, fluvial long profile, lithology, cell-scale regularisations), the
+d1 ↔ d2 link (every node isolated in lockstep, hover the profile to compare), methodology
+tooltips on every control, panel and curve. Python mirrors and tests for all of it
+(`py/test_core.py`, `test_d1_columns.py`, `test_d1_node.py`, `test_d2_along.py`).
+
+**Open question from the last session — overdeepenings.** With erosion ∝ sliding and
+sliding = flux/thickness, basins self-limit at tens of metres (the ice over a basin thickens
+until erosion equals uplift, at ~K_g f_s q/U ≈ 150 m here), and raising K_g erodes the
+thin-ice head faster than uplift and kills the glacier. Best setting found:
+`elaBase=1&peakUplift=2&lexp=2&KgExp=-5&Hmin=50` → 57 m basin over 3 km at 800 kyr.
+Candidate additions, in order: (1) sliding that shuts off in the accumulation zone
+(cold-based ice above the ELA; cheap, the flowline analogue of d1's buzzsaw window);
+(2) tributary flux convergence (d3); (3) effective pressure / hydrology on adverse slopes.
+
+**Next steps.** Decide on (1) above, then step 4 (d2_across) with its own isolate-a-point
+link. Landslide laws (Bishop slices) go into `core/laws.js` with d2_across. Eventual home:
+a static copy inside landslidescience.org (see the deployment notes in the session log and
+the site's own dev→test→approve→deploy rule).
+
+## 9. Decisions (2026-09-25)
 
 Answers to §7, agreed with the user:
 
