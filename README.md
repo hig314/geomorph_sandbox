@@ -22,11 +22,12 @@ Every numerical scheme is mirrored and checked in Python before and after portin
     /opt/anaconda3/bin/python3 py/test_d1_columns.py
     /opt/anaconda3/bin/python3 py/test_d2_along.py
     /opt/anaconda3/bin/python3 py/test_d1_node.py
+    /opt/anaconda3/bin/python3 py/test_relief_limit.py
 
 ## Layout
 
 - `core/` process laws, forcing, lithology, units (pure JS, no DOM)
-- `d1/` column · `d2_along/` long profile · `d2_across/` cross profile · `d3/` DEM
+- `relief_limit/` limits to relief, R(t), a presentation figure · `d1/` column · `d2_along/` long profile · `d2_across/` cross profile · `d3/` DEM
 - `ui/` shared controls, URL state, D3 panels, stylesheet
 - `py/` Python mirrors and tests · `docs/` methods
 - `legacy/` the two projects this grew from (`uplift_sandbox`, `terrain_sandbox`), frozen

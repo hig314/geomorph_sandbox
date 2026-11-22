@@ -136,6 +136,7 @@ low-angle area sits in the hypsometry, and how it moves through time).
 ```
 geomorph_sandbox/
   core/        forcing functions, process laws, lithology, units   (pure JS, no DOM)
+  relief_limit/ limits to relief, R(t): the animated presentation figure (docs/relief_limit.md)
   d1/          column model
   d2_across/   cross-valley profile
   d2_along/    along-valley profile
@@ -205,6 +206,26 @@ thin-ice head faster than uplift and kills the glacier. Best setting found:
 Candidate additions, in order: (1) sliding that shuts off in the accumulation zone
 (cold-based ice above the ELA; cheap, the flowline analogue of d1's buzzsaw window);
 (2) tributary flux convergence (d3); (3) effective pressure / hydrology on adverse slopes.
+
+**Side track, 2026-11-21 — limits to relief.** The 2D direction is set aside for now. New
+page `relief_limit/` (R(t), below d1 on the ladder): a seven-step animated 16:9 figure of
+relief growing to a limit, failing by landslides, with earthquakes depressing a static
+limit and then damaging it until the next landslide strips the damaged rock. Event-driven and exact; `py/test_relief_limit.py` (80 checks),
+JS fingerprints equal to Python on every step. Rules, defaults and open choices in
+`docs/relief_limit.md`.
+
+State of that side track at 2026-11-22: the concept is where the user wants it (seven steps;
+in-frame sliders for weakening and uplift rate on the last; random power-law landslide
+sizes; a relief floor at 10 % of the graph height; earthquakes in steps 4–5 stipulated to
+coincide with relief reaching its limit). The page has an embed mode (`?embed=1`) used by a
+separate project, `~/Claude_projects/Presentation` (reveal.js decks imported from Keynote),
+which holds a *copy* of `relief_limit/`, `core/` and `ui/`: after changing any of them run
+`sh ~/Claude_projects/Presentation/tools/sync_live.sh`, and keep the message contract in
+`relief_limit/app.js` (`relief-step` in, `deck-key` out). Presentation work continues in
+its own sessions (handoff notes in that project's `CLAUDE.md`). Still open on the figure:
+the label/axis grey against "dark annotation on white", the asserted c = 0.5, distance to
+the earthquake source not sampled, Save SVG leaving out the in-frame sliders. None of the
+relief-limit work is committed yet.
 
 **Next steps.** Decide on (1) above, then step 4 (d2_across) with its own isolate-a-point
 link. Landslide laws (Bishop slices) go into `core/laws.js` with d2_across. Eventual home:

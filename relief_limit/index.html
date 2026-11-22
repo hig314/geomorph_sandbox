@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>geomorph sandbox — limits to relief</title>
+  <link rel="stylesheet" href="../ui/styles.css" />
+  <style>
+    .rl-wrap { max-width: 1600px; margin: 0 auto; padding: 12px 24px 40px; }
+    /* 16:9 slide; never taller than the window, so the whole figure is in view */
+    #stage { width: 100%; max-width: calc((100vh - 250px) * 16 / 9); margin: 0 auto; border: 1px solid var(--line); line-height: 0; }
+    /* #slide is the 16:9 frame itself: the SVG plus the in-frame sliders, which are placed and
+       sized in cqw (1 cqw = 19.2 viewBox units) so they scale with the figure */
+    #slide { position: relative; width: 100%; aspect-ratio: 16 / 9; container-type: inline-size; }
+    #slide svg { display: block; width: 100%; height: 100%; }
+    #stage:fullscreen { max-width: none; border: 0; display: flex; align-items: center; justify-content: center; }
+    #stage:fullscreen #slide { width: min(100vw, 100vh * 16 / 9); }
+    #frame-controls { position: absolute; left: 6.77cqw; top: 51.6cqw; display: flex; gap: 3cqw; line-height: 1.2;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 1.45cqw; color: var(--fc-text); }
+    #frame-controls .fc { display: block; width: 19cqw; }
+    #frame-controls .fc-head { display: flex; justify-content: space-between; align-items: baseline; }
+    #frame-controls .fc-val { font-size: 1.2cqw; opacity: 0.75; }
+    #frame-controls input[type="range"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 1.6cqw; margin: 0.25cqw 0 0; background: transparent; cursor: pointer; }
+    #frame-controls input[type="range"]:focus { outline: none; }
+    /* track at the half weight (2 units), thumb an ink dot the size of the earthquake dots */
+    #frame-controls input[type="range"]::-webkit-slider-runnable-track { height: 0.104cqw; background: var(--fc-line); }
+    #frame-controls input[type="range"]::-moz-range-track { height: 0.104cqw; background: var(--fc-line); }
+    #frame-controls input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 1.15cqw; height: 1.15cqw; border-radius: 50%; background: var(--fc-ink); border: 0; margin-top: -0.52cqw; }
+    #frame-controls input[type="range"]::-moz-range-thumb { width: 1.15cqw; height: 1.15cqw; border-radius: 50%; background: var(--fc-ink); border: 0; }
+    #transport { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 4px; }
+    #transport button { padding: 6px 12px; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+    #transport button:hover { background: #f0f0f0; }
+    #transport button.stg { min-width: 32px; padding: 6px 0; }
+    #transport button.stg.current { background: var(--ink); color: #fff; border-color: var(--ink); }
+    #transport .gap { width: 12px; }
+    #transport .keys { font-size: 11px; color: var(--muted); margin-left: auto; }
+    #transport kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; background: #fff; font-size: 11px; }
+    #readout { margin: 8px 0 14px; }
+    #controls { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+    #controls fieldset { margin: 0; }
+    /* embed mode (?embed=1): only the 16:9 frame, filling the window (a slide in another deck) */
+    body.embed { background: #fff; overflow: hidden; }
+    body.embed header, body.embed footer, body.embed #transport, body.embed #readout, body.embed #controls { display: none; }
+    body.embed .rl-wrap { max-width: none; padding: 0; }
+    body.embed #stage { max-width: none; border: 0; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body.embed #slide { width: min(100vw, 100vh * 16 / 9); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Limits to relief <span class="tier">R(t)</span></h1>
+    <p>
+      Uplift and valley incision grow relief until landslides fail it. Seven steps, from a
+      flat limit to earthquakes that both trigger landslides and damage the slope. The figure is
+      a 16:9 slide: step through it with the arrow keys, full screen with <b>F</b>. On the last
+      step two sliders (weakening, uplift rate) sit inside the frame; everything below the frame is presenter's notes. Hover any
+      <span class="tip-glyph">ⓘ</span> or line for the rule behind it.
+    </p>
+    <nav class="tiers">
+      <a href="../index.html">home</a>
+      <a class="current" href="../relief_limit/index.html">limits to relief</a>
+      <a href="../d1/index.html">d1 column</a>
+      <a href="../d2_along/index.html">d2 along-valley</a>
+      <a class="todo" href="../d2_across/index.html">d2 across-valley</a>
+      <a class="todo" href="../d3/index.html">d3 DEM</a>
+    </nav>
+  </header>
+
+  <div class="rl-wrap">
+    <div id="stage"></div>
+    <div id="transport"></div>
+    <div id="readout"></div>
+    <div id="controls"></div>
+  </div>
+
+  <footer>
+    <code>dR/dt = g</code>; an earthquake depresses the limit by <code>D = f·L<sub>s</sub></code> (Gutenberg–Richter sizes); failure where <code>R ≥ L<sub>s</sub> − D</code>, then <code>R ← L<sub>s</sub> − D − d</code>;
+    damage <code>L<sub>s</sub> ← L<sub>s</sub> − k·D</code>, undone by the next landslide. Advanced event to event (exact, no time step), relief in units of
+    L and time in units of L/g<sub>0</sub> (g<sub>0</sub> the reference uplift rate). Model in <code>relief_limit/model.js</code> (no DOM); validated in
+    <code>py/test_relief_limit.py</code>. Methods: <code>docs/relief_limit.md</code>.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="../core/noise.js"></script>
+  <script src="../ui/tooltip.js"></script>
+  <script src="../ui/urlstate.js"></script>
+  <script src="../ui/controls.js"></script>
+  <script src="../ui/panels.js"></script>
+  <script src="model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
