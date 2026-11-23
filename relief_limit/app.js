@@ -187,13 +187,13 @@
     yLab.attr("fill", pal.text); xLab.attr("fill", pal.text);
 
     funcLine.attr("y1", y(p.L)).attr("y2", y(p.L)).attr("stroke", pal.limit);
-    hitFunc.attr("y1", y(p.L)).attr("y2", y(p.L)).style("display", st <= 5 ? null : "none");
+    hitFunc.attr("y1", y(p.L)).attr("y2", y(p.L)).style("display", st <= 4 ? null : "none");
     var lines = st <= 3 ? ["Limit"] : ["Limit during", "earthquakes"];
     funcLab.attr("fill", pal.text).attr("y", y(p.L) + (lines.length > 1 ? -8 : 12)).selectAll("tspan").remove();
     lines.forEach(function (s, i) { funcLab.append("tspan").attr("x", X1 + 18).attr("dy", i ? 40 : 0).text(s); });
-    funcG.style("opacity", st <= 5 ? 1 : 0);
+    funcG.style("opacity", st <= 4 ? 1 : 0); // from step 5 the limit is one curve: the upper line and its dips
 
-    statLine.attr("stroke", pal.limit); statLab.attr("fill", pal.text);
+    statLine.attr("stroke", pal.limit); statLab.attr("fill", pal.text).text(st >= 5 ? "Limit" : "Static limit");
     statG.style("opacity", st >= 4 ? 1 : 0);
     hitStat.style("display", st >= 4 ? null : "none");
 
@@ -270,8 +270,8 @@
       : GS.ui.curveTip("Limit during earthquakes", pal.limit, "dashed", "The static limit less the depression of the constant earthquake. It is in force only at the instants an earthquake strikes; between them the slope could stand higher.", "L = L<sub>s</sub> · (1 − f)");
   });
   GS.ui.tip.attach(hitStat, function () {
-    return GS.ui.curveTip("Static limit", pal.limit, "dashed",
-      "The relief the unshaken slope can hold." + (+state.stage === 7 ? " Each earthquake that does not cause a landslide lowers it by k·D; the next landslide removes the damaged rock and restores it. Right of the cursor it is drawn level, as it stands now." : " Failures happen below it because earthquakes lower the limit for a moment."),
+    return GS.ui.curveTip(+state.stage >= 5 ? "Limit" : "Static limit", pal.limit, "dashed",
+      (+state.stage >= 5 ? "The limit to relief: level at the relief the unshaken slope can hold, and dropping down each dashed line to its dot for the instant of an earthquake." : "The relief the unshaken slope can hold.") + (+state.stage === 7 ? " Each earthquake that does not cause a landslide lowers it by k·D; the next landslide removes the damaged rock and restores it. Right of the cursor it is drawn level, as it stands now." : " Failures happen below it because earthquakes lower the limit for a moment."),
       +state.stage === 7 ? "L<sub>s</sub> ← L<sub>s</sub> − k·D;  landslide: L<sub>s</sub> ← L<sub>s,0</sub>" : "L<sub>eff</sub> = L<sub>s</sub> · (1 − f)");
   });
 

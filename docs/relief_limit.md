@@ -108,7 +108,10 @@ are the only colour, filled dots where they fail the slope and open where they d
 ticks or grid: the axes are dimensionless. Two line weights a factor of two apart: full
 weight for axes, relief, limits and circle outlines, half weight for the earthquake
 drop-lines; a double weight is reserved for faded reference lines behind the others. The vertical frame is the same in every step so
-the static limit arrives in empty space. In step 7 the static limit is drawn stepped up to
+the static limit arrives in empty space. Step 4 shows two lines, "Static limit" above and
+"Limit during earthquakes" below. From step 5 the lower line is gone and the upper one is
+labelled just "Limit": the limit is one curve, level at the static value and dropping down
+each earthquake's dashed line to its dot for that instant. In step 7 the static limit is drawn stepped up to
 the time cursor and level beyond it.
 
 **In frame and out.** On the last step two sliders sit inside the 16:9 frame, under the
