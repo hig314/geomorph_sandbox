@@ -118,6 +118,11 @@ it, and they mirror the controls of the same name below the frame. Every other c
 outside the frame as presenter's notes. "Sliders in frame" switches them to every step or
 off. The saved SVG does not include them.
 
+**Pace.** Two drawing times, in seconds for the line to cross the slide: `drawEarly` for
+steps 1–5 and `drawTime` for steps 6–7 (both 12 s by default, 1–40 s). Steps 4 and 5 keep
+the line of step 3, so `drawEarly` matters for them only when one is opened directly. Both
+are URL parameters, so a slide can pin its own pace (`…?embed=1&drawEarly=5`).
+
 **Embedding.** `relief_limit/index.html?embed=1` shows only the 16:9 frame, for use as a
 slide inside another deck (the `Presentation` project). The host sets the step with
 `postMessage({type: "relief-step", step: n, replay: bool})`; step keys pressed inside the

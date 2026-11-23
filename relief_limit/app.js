@@ -46,8 +46,10 @@
   var m = {
     stage: M("Step of the argument", ["dR/dt = g", "failure if R ≥ L<sub>s</sub>(1 − f),  then R ← L<sub>s</sub>(1 − f) − d"],
       "Seven figures that add one idea at a time: a flat limit (1), landslides small (2) and large (3), a static limit above with constant earthquakes (4), the earthquakes drawn (5), a spectrum of earthquakes (6), and damage (7). One rule runs all of them; each step only switches on another term. Steps 3, 4 and 5 are the same relief history seen three ways, so moving between them does not redraw the line.", SRC),
-    drawTime: M("Drawing time", ["t<sub>cursor</sub> advances t<sub>max</sub> / (drawing time) per second"],
-      "How many seconds the line takes to draw across the slide. It changes nothing in the model, only the pace of the animation: slow it down to talk over it, speed it up to get to the point.", null),
+    drawEarly: M("Drawing time, steps 1–5", ["t<sub>cursor</sub> advances t<sub>max</sub> / (drawing time) per second"],
+      "How many seconds the line takes to draw across the slide in the early steps. It changes nothing in the model, only the pace of the animation. Steps 1, 2 and 3 each draw a new line; steps 4 and 5 keep the line of step 3, so this only applies to them when one is opened directly.", null),
+    drawTime: M("Drawing time, steps 6–7", ["t<sub>cursor</sub> advances t<sub>max</sub> / (drawing time) per second"],
+      "How many seconds the line takes to draw across the slide in the last two steps. It changes nothing in the model, only the pace of the animation: slow it down to talk over it, speed it up to get to the point.", null),
     frame: M("Sliders in the frame", [],
       "Two sliders, weakening and uplift rate, can sit inside the 16:9 frame under the time axis, where they stay visible in full screen. By default they appear on the last step only. They are the same quantities as the controls of the same name below and move together with them; every other control stays out here as presenter's notes. The saved SVG does not include them.", null),
     g: M("Uplift rate g", ["dR/dt = g", "saw-tooth period = d / g"],
@@ -92,7 +94,8 @@
   var specs = [
     { id: "stage", label: "Step", type: "select", val: "1", group: "Figure", method: m.stage,
       options: STAGES.map(function (s, i) { return { v: String(i + 1), t: (i + 1) + " · " + s[0] }; }) },
-    { id: "drawTime", label: "Drawing time", type: "range", val: 12, min: 3, max: 40, step: 1, unit: "s", group: "Figure", method: m.drawTime },
+    { id: "drawEarly", label: "Drawing time, steps 1–5", type: "range", val: 12, min: 1, max: 40, step: 1, unit: "s", group: "Figure", method: m.drawEarly },
+    { id: "drawTime", label: "Drawing time, steps 6–7", type: "range", val: 12, min: 1, max: 40, step: 1, unit: "s", group: "Figure", method: m.drawTime },
     { id: "theme", label: "Background", type: "select", val: "light", group: "Figure", method: m.theme,
       options: [{ v: "light", t: "light" }, { v: "dark", t: "dark" }] },
     { id: "frame", label: "Sliders in frame", type: "select", val: "last", group: "Figure", method: m.frame,
@@ -285,7 +288,7 @@
   function tick(now) {
     if (!playing) return;
     var dt = Math.min((now - lastNow) / 1000, 0.1); lastNow = now;
-    tc = Math.min(sim.p.tmax, tc + dt * sim.p.tmax / state.drawTime);
+    tc = Math.min(sim.p.tmax, tc + dt * sim.p.tmax / (+state.stage <= 5 ? state.drawEarly : state.drawTime));
     draw();
     if (tc >= sim.p.tmax) { playing = false; buttons(); } else requestAnimationFrame(tick);
   }
@@ -355,7 +358,7 @@
     if (id === "stage") {
       if (!samePath(old, sim.path)) { tc = 0; draw(); playing = false; play(); } // a new history: draw it
       else draw();                                                              // same history: keep the cursor, new elements fade in
-    } else if (id !== "theme" && id !== "drawTime" && id !== "frame") {
+    } else if (id !== "theme" && id !== "drawTime" && id !== "drawEarly" && id !== "frame") {
       playing = false; tc = sim.p.tmax; draw();                                 // tuning a parameter: show the whole record
     } else draw();
     syncFrame(); readout(); buttons(); url.write(state);
