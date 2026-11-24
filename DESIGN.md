@@ -214,18 +214,32 @@ limit and then damaging it until the next landslide strips the damaged rock. Eve
 JS fingerprints equal to Python on every step. Rules, defaults and open choices in
 `docs/relief_limit.md`.
 
-State of that side track at 2026-11-22: the concept is where the user wants it (seven steps;
-in-frame sliders for weakening and uplift rate on the last; random power-law landslide
-sizes; a relief floor at 10 % of the graph height; earthquakes in steps 4–5 stipulated to
-coincide with relief reaching its limit). The page has an embed mode (`?embed=1`) used by a
-separate project, `~/Claude_projects/Presentation` (reveal.js decks imported from Keynote),
-which holds a *copy* of `relief_limit/`, `core/` and `ui/`: after changing any of them run
-`sh ~/Claude_projects/Presentation/tools/sync_live.sh`, and keep the message contract in
-`relief_limit/app.js` (`relief-step` in, `deck-key` out). Presentation work continues in
-its own sessions (handoff notes in that project's `CLAUDE.md`). Still open on the figure:
-the label/axis grey against "dark annotation on white", the asserted c = 0.5, distance to
-the earthquake source not sampled, Save SVG leaving out the in-frame sliders. None of the
-relief-limit work is committed yet.
+State of that side track at 2026-11-23 (the figure is committed and pushed, `f09f1fb`): the
+concept is where the user wants it. Seven steps; in-frame sliders for weakening and uplift
+rate on the last; random power-law landslide sizes; a relief floor at 10 % of the graph
+height; earthquakes in steps 4–5 stipulated to coincide with relief reaching its limit; two
+drawing times (`drawEarly` for steps 1–5, `drawTime` for 6–7, both URL parameters); from
+step 5 the lower limit line is gone and the upper one is labelled "Limit" (one curve that
+dips at each earthquake), step 4 keeping "Static limit" and "Limit during earthquakes".
+
+The figure is presented from a deck that now lives on landslidescience.org (slide 37 of
+`/decks/gc_outline/`, edited online), built by a separate project,
+`~/Claude_projects/Presentation`, which works in its own sessions (handoff notes in its
+`CLAUDE.md`). The deck carries a *copy* of `relief_limit/`, `core/` and `ui/` in its own
+`live/geomorph_sandbox/` folder, so pushing this repository updates GitHub Pages but not
+the deck. To get a change of the figure there: `sh ~/Claude_projects/Presentation/tools/sync_live.sh`,
+then copy the changed files of `Presentation/live/geomorph_sandbox/` into the deck's
+`live/geomorph_sandbox/` on the server (compare by checksum first; leave the deck's
+`deck.json` alone, it holds the edits made online). Done for production on 2026-11-23, at
+the user's request; the dev site's copy is one version behind and the Presentation
+repository's refreshed copy is uncommitted. Keep the message contract in
+`relief_limit/app.js` (`relief-step` in, `deck-key` out).
+
+Still open on the figure: whether the earthquake drop-lines should take the limit's grey
+and weight now that they are read as part of the limit curve; the label/axis grey against
+"dark annotation on white"; the asserted c = 0.5; distance to the earthquake source not
+sampled; Save SVG leaving out the in-frame sliders; a drawing time per step if the
+early/late split proves too coarse.
 
 **Next steps.** Decide on (1) above, then step 4 (d2_across) with its own isolate-a-point
 link. Landslide laws (Bishop slices) go into `core/laws.js` with d2_across. Eventual home:
