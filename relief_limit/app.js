@@ -288,7 +288,7 @@
   function tick(now) {
     if (!playing) return;
     var dt = Math.min((now - lastNow) / 1000, 0.1); lastNow = now;
-    tc = Math.min(sim.p.tmax, tc + dt * sim.p.tmax / (+state.stage <= 5 ? state.drawEarly : state.drawTime));
+    tc = Math.min(sim.p.tmax, tc + dt * sim.p.tmax / (pace || (+state.stage <= 5 ? state.drawEarly : state.drawTime)));
     draw();
     if (tc >= sim.p.tmax) { playing = false; buttons(); } else requestAnimationFrame(tick);
   }
@@ -298,6 +298,7 @@
     buttons();
   }
   function pause() { playing = false; buttons(); }
+  var pace = 0;                // seconds to draw this step, given by a presentation (0: the drawing-time settings)
   function replay() { tc = 0; draw(); playing = false; play(); }
   function setStage(n) {
     n = Math.max(1, Math.min(STAGES.length, n));
@@ -371,6 +372,7 @@
   window.addEventListener("message", function (ev) {
     var d = ev.data;
     if (!EMBED || !d || d.type !== "relief-step") return;
+    pace = +d.dur > 0 ? +d.dur : 0;                    // the deck's build order may set how long this step plays
     if (+d.step !== +state.stage) setStage(+d.step); else if (d.replay) replay();
   });
 })();
