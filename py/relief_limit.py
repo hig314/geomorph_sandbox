@@ -235,3 +235,116 @@ def reference(params, dt):
                 C -= k * D
         out.append((t, R))
     return out
+
+
+# ---- The cross-section ---------------------------------------------------------------
+# A ridge-valley half-section z(x), valley at x = 0, ridge at x = 1 (x in units of the
+# half-spacing w, z in units of L), read from the same relief history. Three rules:
+#   incision    the valley floor cuts down and a slope at the limiting gradient S = C0
+#               (the intact ceiling: relief C0 over the half-spacing) rises from it; above
+#               where that slope meets it, the older (relict) surface is untouched:
+#               z(x) = min(relict(x), z_valley + S x),   z_valley = z_ridge - R(t)
+#   landslide   a failure taking relief from R to R' replaces the surface by a straight
+#               line of equal area: cut above where it crosses the old surface, fill below.
+#               If that line would stand above the old ridge, the ridge is left alone, the
+#               valley floor rises by R - R', and the line climbs from it to the point x2
+#               on the old surface at which cut = fill; above x2 the old surface remains
+#   datum       drawn about the mean elevation of the section, which a landslide conserves
+# The surface is a concave polyline throughout, so every step is exact except the root x2
+# (bisection to round-off). Nothing here feeds back on R(t).
+
+def sec_area(poly, x_to=1.0):
+    """Integral of the polyline from 0 to x_to (trapezoids)."""
+    a = 0.0
+    for (x0, z0), (x1, z1) in zip(poly, poly[1:]):
+        if x_to <= x0:
+            break
+        if x_to < x1:
+            zc = z0 + (z1 - z0) * (x_to - x0) / (x1 - x0)
+            return a + 0.5 * (z0 + zc) * (x_to - x0)
+        a += 0.5 * (z0 + z1) * (x1 - x0)
+    return a
+
+
+def sec_value(poly, x):
+    for (x0, z0), (x1, z1) in zip(poly, poly[1:]):
+        if x <= x1:
+            return z0 if x1 == x0 else z0 + (z1 - z0) * (x - x0) / (x1 - x0)
+    return poly[-1][1]
+
+
+def sec_surface(rel, R, S):
+    """The surface for relief R over the relict polyline rel: min(rel, z_valley + S x)."""
+    n = len(rel); zv = rel[n - 1][1] - R
+    if rel[0][1] - zv <= EPS:
+        return list(rel)                              # no incision since the relict surface formed
+    for i in range(n - 1):
+        (x0, z0), (x1, z1) = rel[i], rel[i + 1]
+        g0 = z0 - zv - S * x0; g1 = z1 - zv - S * x1
+        if g1 <= EPS or i == n - 2:                   # the limiting slope meets the relict surface here
+            xk = x1 if g0 - g1 <= 0 else x0 + (x1 - x0) * g0 / (g0 - g1)
+            xk = min(max(xk, x0), x1)
+            if x1 - xk < 1e-9:
+                return [(0.0, zv)] + list(rel[i + 1:])
+            return [(0.0, zv), (xk, z0 + (z1 - z0) * (xk - x0) / (x1 - x0))] + list(rel[i + 1:])
+
+
+def sec_landslide(cur, Rn):
+    """The surface after a landslide that leaves relief Rn on the surface cur (equal area)."""
+    zr = cur[-1][1]
+    a = sec_area(cur) - 0.5 * Rn                      # straight line, valley to ridge
+    if a + Rn <= zr + EPS:
+        return [(0.0, a), (1.0, a + Rn)]
+    a = zr - Rn; lo = 0.0; hi = 1.0                   # ridge untouched: find x2 with cut = fill
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if mid * 0.5 * (a + sec_value(cur, mid)) - sec_area(cur, mid) > 0: lo = mid
+        else: hi = mid
+    x2 = 0.5 * (lo + hi)
+    return [(0.0, a), (x2, sec_value(cur, x2))] + [v for v in cur if v[0] > x2 + 1e-9]
+
+
+def section_states(sim):
+    """[{t, rel, pre}]: the relict surface in force from each landslide on (pre = the surface
+    it failed from), starting from a flat surface at t = 0."""
+    p = sim["p"]; S = p["L"] if int(p["stage"]) <= 3 else p["Ls"]
+    rel = [(0.0, 0.0), (1.0, 0.0)]
+    out = [{"t": 0.0, "rel": rel, "pre": None}]
+    for f in sim["fails"]:
+        if f["from"] - f["to"] <= EPS:
+            continue
+        cur = sec_surface(rel, f["from"], S)
+        rel = sec_landslide(cur, f["to"])
+        out.append({"t": f["t"], "rel": rel, "pre": cur})
+    return out
+
+
+def ceiling_at(lim, t):
+    c = lim[0][1]
+    for (tt, cc) in lim:
+        if tt <= t: c = cc
+        else: break
+    return c
+
+
+def section_at(sim, states, t):
+    """The section at time t: pts (about its mean elevation), the relief R, the surface the
+    last landslide failed from (ghost, same datum) with the time since it (age), and
+    weak = (C0 - C) / C0, the damage standing in the slope."""
+    p = sim["p"]; S = p["L"] if int(p["stage"]) <= 3 else p["Ls"]
+    k = 0
+    while k + 1 < len(states) and states[k + 1]["t"] <= t:
+        k += 1
+    st = states[k]; R = relief_at(sim["path"], t)
+    cur = sec_surface(st["rel"], R, S); m = sec_area(cur)
+    return {"pts": [(x, z - m) for x, z in cur], "R": R,
+            "ghost": [(x, z - m) for x, z in st["pre"]] if st["pre"] else None, "age": t - st["t"],
+            "weak": max(0.0, (S - ceiling_at(sim["lim"], t)) / S)}
+
+
+def section_fingerprint(stage, extra=None):
+    s = simulate(dict(extra or {}, stage=stage)); states = section_states(s); out = "%d: %d" % (stage, len(states) - 1)
+    for t in (0.37, 1.91, 3.3):
+        pts = section_at(s, states, t)["pts"]
+        out += " %.9f %d" % (sum(abs(z) + x for x, z in pts), len(pts))
+    return out

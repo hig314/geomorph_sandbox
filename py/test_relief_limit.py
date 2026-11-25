@@ -214,5 +214,72 @@ s = rl.simulate({"stage": 7, "g": 0.6, "damage": 0.3})
 print("  7 with g = 0.6, damage = 0.3 (GS.relief.fingerprint(7, {g: 0.6, damage: 0.3})):\n     %d %d %d %d %.9f %.9f %.9f" % (
     len(s["path"]), len(s["fails"]), len(s["quakes"]), sum(q["trig"] for q in s["quakes"]), sum(r_ for _, r_ in s["path"]), s["lim"][-1][1], rl.mean_relief(s["path"])))
 
+# ---- 11. the cross-section: geometry read from the same history ----
+def slopes(poly): return [(z1 - z0) / (x1 - x0) for (x0, z0), (x1, z1) in zip(poly, poly[1:])]
+stress = [{}, {"g": 0.3}, {"floor": 0.0, "dMax": 1.2}, {"damage": 0.6, "rate": 60}, {"Ls": 1.1}, {"Ls": 2.5, "fmax": 0.9}, {"R0": 0.0}, {"R0": 1.0, "g": 0.0}]
+worst_mass = 0.0; worst_rel = 0.0; ok_shape = True; ok_cutfill = True; ok_ridge = True; nls = 0; nB = 0
+for st in range(1, 8):
+    for ex in (stress if st >= 6 else stress[:3] + stress[6:]):
+        s = rl.simulate(dict(ex, stage=st)); p = s["p"]; S = p["L"] if st <= 3 else p["Ls"]
+        states = rl.section_states(s)
+        for a_, b_ in zip(states, states[1:]):
+            pre, post = b_["pre"], b_["rel"]; nls += 1
+            worst_mass = max(worst_mass, abs(rl.sec_area(pre) - rl.sec_area(post)))
+            # the valley is filled, the ridge is never raised, and the new surface is the old one or a single straight cut/fill line
+            ok_ridge = ok_ridge and post[0][1] > pre[0][1] and post[-1][1] <= pre[-1][1] + 1e-9
+            if post[-1][1] > pre[-1][1] - 1e-9 and len(post) > 2: nB += 1
+            x2 = post[1][0]
+            if post[-1][1] < pre[-1][1] - 1e-9:           # the line runs valley to ridge: nothing of the old surface is left
+                ok_cutfill = ok_cutfill and len(post) == 2
+                continue
+            ok_cutfill = ok_cutfill and all(abs(rl.sec_value(pre, x) - z) < 1e-9 for x, z in post[2:]) and abs(rl.sec_value(pre, x2) - post[1][1]) < 1e-9
+        ts = [p["tmax"] * i / 400.0 for i in range(401)] + [f["t"] for f in s["fails"]]
+        for t in ts:
+            sec = rl.section_at(s, states, t); pts = sec["pts"]; sl = slopes(pts)
+            worst_rel = max(worst_rel, abs(pts[-1][1] - pts[0][1] - rl.relief_at(s["path"], t)), abs(rl.sec_area(pts)))
+            ok_shape = ok_shape and pts[0][0] == 0.0 and pts[-1][0] == 1.0 and all(x1 > x0 for (x0, _), (x1, _) in zip(pts, pts[1:])) \
+                and all(-1e-9 <= v <= S + 1e-9 for v in sl) and all(b2 <= a2 + 1e-7 for a2, b2 in zip(sl, sl[1:])) and 0.0 <= sec["weak"] < 1.0
+check("section: every landslide conserves area (cut = fill)", worst_mass < 1e-12 and nls > 300, "%d landslides, worst residual %.1e" % (nls, worst_mass))
+check("section: ridge-to-valley height equals R(t), and the mean elevation is the datum, at every sampled time in every step", worst_rel < 1e-9, "worst %.1e" % worst_rel)
+check("section: surface is a concave polyline rising from valley to ridge, nowhere steeper than the limiting gradient", ok_shape)
+check("section: a landslide raises the valley floor and never the ridge", ok_ridge, "%d of %d leave the ridge untouched" % (nB, nls))
+check("section: above the cut/fill line the old surface is unchanged", ok_cutfill)
+
+# step 1: a V at the limiting gradient cut into a flat surface; the flat is consumed when R = L
+s = rl.simulate({"stage": 1}); states = rl.section_states(s)
+okv = True
+for t in (0.0, 0.2, 0.5, 0.69):
+    pts = rl.section_at(s, states, t)["pts"]; R = 0.3 + t
+    okv = okv and len(pts) == 3 and abs(pts[1][0] - R) < 1e-12 and abs(pts[2][1] - pts[1][1]) < 1e-12 and abs(pts[2][1] - R * R / 2) < 1e-12
+pts = rl.section_at(s, states, 2.0)["pts"]
+check("section, step 1: V of half-width w R/L in a flat surface (which stands R^2/2L above the mean); at the limit a straight slope from -L/2 to +L/2",
+      okv and len(pts) == 2 and abs(pts[0][1] + 0.5) < 1e-12 and abs(pts[1][1] - 0.5) < 1e-12)
+
+# steps 2-3: the landslide pivots the slope about its midpoint; recovery steepens it from the valley up
+for st, d in ((2, 0.05), (3, 0.25)):
+    s = rl.simulate({"stage": st}); states = rl.section_states(s)
+    okp = all(len(b_["rel"]) == 2 and abs(b_["rel"][0][1] - b_["pre"][0][1] - d / 2) < 1e-12 and abs(b_["pre"][1][1] - b_["rel"][1][1] - d / 2) < 1e-12 for b_ in states[1:])
+    t0 = s["fails"][0]["t"]; okk = True
+    for fr in (0.25, 0.5, 0.9):
+        sec = rl.section_at(s, states, t0 + fr * d); pts = sec["pts"]; R = 1 - d + fr * d
+        okk = okk and len(pts) == 3 and abs(pts[1][0] - (R - (1 - d)) / d) < 1e-9 and abs(slopes(pts)[0] - 1) < 1e-9 and abs(slopes(pts)[1] - (1 - d)) < 1e-9
+    check("section, step %d: ridge down d/2, valley up d/2, slope L-d over w; then the limiting gradient climbs to x = w (R - R1)/(L - R1)" % st, okp and okk and len(states) - 1 == len(s["fails"]))
+
+# steps 3 and 4 share R(t) but not the section: in 4 the limiting gradient is the static one, never reached
+s3 = rl.simulate({"stage": 3}); s4 = rl.simulate({"stage": 4}); t = s3["fails"][2]["t"] - 1e-6
+a3 = rl.section_at(s3, rl.section_states(s3), t)["pts"]; a4 = rl.section_at(s4, rl.section_states(s4), t)["pts"]
+check("section, step 4: just before a failure the slope is straight in step 3 and still two-part in step 4 (lower part at Ls/w)", len(a3) <= 3 and abs(slopes(a3)[0] - 1) < 1e-6 and len(a4) >= 3 and abs(slopes(a4)[0] - 1.6) < 1e-9)
+
+# step 7: weak follows the damage and is cleared by every landslide
+s = rl.simulate({"stage": 7}); states = rl.section_states(s)
+wk = [rl.section_at(s, states, f["t"])["weak"] for f in s["fails"]]
+wmax = max(rl.section_at(s, states, 4.0 * i / 2000)["weak"] for i in range(2001))
+check("section, step 7: weak = (Ls0 - Ls)/Ls0, zero after every landslide; zero throughout step 6", max(wk) == 0.0 and abs(wmax - (1.6 - min(c for _, c in s["lim"])) / 1.6) < 1e-3 and
+      all(rl.section_at(s6, rl.section_states(s6), 4.0 * i / 50)["weak"] == 0.0 for i in range(51)), "largest %.3f" % wmax)
+
+print("\nsection fingerprints (stage: landslide surfaces, then sum of |z| and vertex count of the section at t = 0.37, 1.91, 3.3; GS.relief.sectionFingerprint(stage))")
+for st in range(1, 8):
+    print("  " + rl.section_fingerprint(st))
+
 print("\n%d failed" % len(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)

@@ -16,9 +16,20 @@
 
   var W = 1920, H = 1080, X0 = 130, X1 = 1590, Y0 = 960, Y1 = 90;
   var THEMES = {
-    light: { bg: "#ffffff", ink: "#1a1a1a", axis: "#9a9a9a", text: "#555555", limit: "#7a7a7a", quake: "#c0392b" },
-    dark:  { bg: "#111111", ink: "#f2f2f2", axis: "#777777", text: "#b8b8b8", limit: "#a0a0a0", quake: "#ff7b66" }
+    light: { bg: "#ffffff", ink: "#1a1a1a", axis: "#9a9a9a", text: "#555555", limit: "#7a7a7a", quake: "#c0392b", rock: "#5c4d42", weak: "#e2d6c6" },
+    dark:  { bg: "#111111", ink: "#f2f2f2", axis: "#777777", text: "#b8b8b8", limit: "#a0a0a0", quake: "#ff7b66", rock: "#857263", weak: "#efe6d8" }
   };
+  // The cross-section: a circle inside the axes at the lower left, just above the time axis and
+  // roughly under the first landslide (t = (L − R0)/g at the defaults), below the relief line.
+  // It shows 2/3 of a cycle of the periodic ridge–valley section, ridge on the left and valley
+  // on the right so that landslides run the way the figure reads; the half-spacing w is 1.5
+  // radii. The static limit's relief, the highest possible, spans SEC_FILL of the diameter in
+  // every step, which leaves its crest and valley floor clear of the rim. Damaged rock is a
+  // lens under the slope, valley floor to the top of the slope, thickest at mid-slope, where
+  // its depth is the same fraction of the slope's height as the limit has lost, (C0 − C) / C0.
+  // The surface a landslide failed from lingers as a thin line for SEC_GHOST of the record.
+  var SEC_R = 125, SEC_X = X0 + (X1 - X0) * 0.175, SEC_Y = Y0 - SEC_R - 14;
+  var SEC_FILL = 0.46, SEC_GHOST = 0.03;
   // Line weights. Two weights a factor of two apart carry the figure: WT for the axes, relief,
   // limits and circle outlines; WT / 2 for the momentary dips of the limit at earthquakes.
   // A third, 2 × WT, is reserved for faded reference lines drawn behind the others (not used yet).
@@ -52,6 +63,9 @@
       "How many seconds the line takes to draw across the slide in the last two steps. It changes nothing in the model, only the pace of the animation: slow it down to talk over it, speed it up to get to the point.", null),
     frame: M("Sliders in the frame", [],
       "Two sliders, weakening and uplift rate, can sit inside the 16:9 frame under the time axis, where they stay visible in full screen. By default they appear on the last step only. They are the same quantities as the controls of the same name below and move together with them; every other control stays out here as presenter's notes. The saved SVG does not include them.", null),
+    section: M("Cross-section", ["z(x) = min( z<sub>relict</sub>(x),  z<sub>valley</sub> + (L<sub>lim</sub> / w)·x ),   z<sub>ridge</sub> − z<sub>valley</sub> = R(t)", "landslide R → R′:  straight line with  ∫cut dx = ∫fill dx", "damaged depth at x:  R · (L<sub>s,0</sub> − L<sub>s</sub>) / L<sub>s,0</sub> · 4s(1 − s),   s = x / x<sub>top of slope</sub>"],
+      "The same history drawn as a slope: two thirds of one cycle of a repeating ridge-and-valley section, rock dark and air light, ridge on the left and valley on the right so that landslides run the way the figure reads, in the circle at the lower left of the graph. The height from valley floor to ridge crest is the relief on the graph at the time cursor, at every instant. Three rules make the shape. <b>Incision:</b> the valley floor cuts down and a slope at the limiting gradient (the limit's relief over the half-spacing w of ridge and valley) climbs from it; above the point it has reached, the older surface is untouched. Starting from a flat surface this is a V that widens until the flat is gone, which is the limit. <b>Landslide:</b> the slope is replaced by a straight, gentler line that removes exactly as much rock from above as it deposits below, so the crest comes down and the valley floor comes up; the limiting gradient then climbs from the valley again. Where a full-length line would bury the old crest, the crest is left alone and the line ends on the old surface. <b>Weakening:</b> damaged rock is a pale lens under the slope, tapering to nothing at the valley floor and at the top of the slope and thickest half-way up, as fracturing under topographic stress is found to be. Its depth at mid-slope is the same fraction of the slope's height as the limit has lost of its intact value: a limit lowered by a fifth is a lens a fifth as deep as the slope is high. It deepens with every earthquake the slope survives, in step with the limit on the graph, and the landslide that restores the limit removes it. From step 4 the limiting gradient is that of the static limit, which the slope no longer reaches before it fails, so the upper slope stays gentler than the lower. The section is drawn about its mean elevation, which a landslide does not change; uniform uplift and the export of rock by the river are not shown. It is a reading of R(t), with no effect on it; the thin line after a landslide is the surface that failed.",
+      SRC, "asserted"),
     g: M("Uplift rate g", ["dR/dt = g", "saw-tooth period = d / g"],
       "How fast relief grows between failures, as a fraction of the reference rate g<sub>0</sub> that sets the time unit (L/g<sub>0</sub>); the default is the maximum. At zero relief never grows: nothing regenerates what a landslide removes, and the only way to a failure is an earthquake large enough to reach the standing relief, or in the last step enough accumulated damage to bring the limit down to it. It stands for rock uplift and the valley incision that keeps pace with it. Faster uplift rebuilds relief sooner after each landslide, so the slope spends more of its time high: landslides are more frequent, mean relief is higher, and in the last step less damage accumulates before the next failure. Slower uplift leaves the slope low for long stretches, where only the rare large earthquakes reach it. The earthquake sequence does not change with g.", SRC, "asserted"),
     theme: M("Slide background", [], "Light or dark, to match the deck. Colours only; the saved SVG uses the theme shown.", null),
@@ -100,6 +114,8 @@
       options: [{ v: "light", t: "light" }, { v: "dark", t: "dark" }] },
     { id: "frame", label: "Sliders in frame", type: "select", val: "last", group: "Figure", method: m.frame,
       options: [{ v: "last", t: "last step only" }, { v: "all", t: "every step" }, { v: "off", t: "hidden" }] },
+    { id: "section", label: "Cross-section", type: "select", val: "on", group: "Figure", method: m.section,
+      options: [{ v: "on", t: "shown" }, { v: "off", t: "hidden" }] },
     { id: "g", label: "Uplift rate", type: "range", val: 1, min: 0, max: 1, step: 0.02, fmt: function (v) { return v.toFixed(2) + " × g₀"; }, group: "Relief and landslides", method: m.g },
     { id: "R0", label: "Initial relief", type: "range", val: 0.3, min: 0, max: 1, step: 0.05, fmt: fL, group: "Relief and landslides", method: m.R0 },
     { id: "tmax", label: "Length of record", type: "range", val: 4, min: 2, max: 12, step: 0.5, fmt: fT, group: "Relief and landslides", method: m.tmax },
@@ -149,13 +165,23 @@
   var relief = svg.append("path").attr("fill", "none").attr("stroke-width", WT).attr("stroke-linejoin", "round")
     .attr("clip-path", "url(#rl-clip)").style("pointer-events", "none");
   var quakeG = svg.append("g");
+  // the cross-section
+  svg.select("defs").append("clipPath").attr("id", "rl-sec").append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R);
+  var secG = svg.append("g").style("pointer-events", "none");
+  var secAir = secG.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R);
+  var secIn = secG.append("g").attr("clip-path", "url(#rl-sec)");
+  var secRock = secIn.append("path"), secWeak = secIn.append("path");
+  var secGhost = secIn.append("path").attr("fill", "none").attr("stroke-width", WT / 2);
+  var secRing = secG.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R).attr("fill", "none").attr("stroke-width", WT);
   // wide invisible strokes that catch the pointer for the curve tooltips (as ui/panels.js)
   function hit(node) {
     return svg.append(node).attr("fill", "none").attr("stroke", "transparent").attr("stroke-width", 28)
       .style("pointer-events", "stroke").style("cursor", "help");
   }
   var hitFunc = hit("line").attr("x1", X0).attr("x2", X1), hitStat = hit("path"), hitRelief = hit("path").attr("clip-path", "url(#rl-clip)");
+  var hitSec = svg.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R).attr("fill", "transparent").style("pointer-events", "all").style("cursor", "help");
 
+  var secStates = null;
   var sim = null, pal = THEMES.light, tc = 0, playing = false, lastNow = 0, yMax = 1;
   function x(t) { return X0 + (X1 - X0) * t / sim.p.tmax; }
   function y(r) { return Y0 - (Y0 - Y1) * r / yMax; }
@@ -200,6 +226,12 @@
     relief.attr("stroke", pal.ink).attr("d", poly(sim.path));
     hitRelief.attr("d", poly(sim.path));
 
+    secStates = RL.sectionStates(sim);
+    secG.style("display", state.section === "off" ? "none" : null);
+    hitSec.style("display", state.section === "off" ? "none" : null);
+    secAir.attr("fill", pal.bg); secRock.attr("fill", pal.rock); secWeak.attr("fill", pal.weak);
+    secGhost.attr("stroke", pal.axis); secRing.attr("stroke", pal.axis);
+
     quakeG.selectAll("g").remove();
     if (st >= 5) {
       var q = quakeG.selectAll("g").data(sim.quakes).enter().append("g").style("transition", "opacity 0.3s").style("opacity", 0).style("cursor", "help");
@@ -231,6 +263,53 @@
     statLab.attr("y", y(c));
     quakeG.selectAll("g").style("opacity", function (d) { return d.t <= tc ? 1 : 0; })
       .style("pointer-events", function (d) { return d.t <= tc ? null : "none"; });
+    drawSection();
+  }
+
+  // The cross-section at the time cursor (RL.sectionAt), mirrored about valley and ridge.
+  function secPath(pts, lead) {
+    var wpx = 1.5 * SEC_R, v = 2 * SEC_FILL * SEC_R / Math.max(sim.p.Ls, sim.p.L), s = "", i;
+    for (i = 0; i < pts.length; i++) s += (i ? "L" : lead) + (SEC_X - (pts[i][0] - 0.5) * wpx).toFixed(2) + "," + (SEC_Y - pts[i][1] * v).toFixed(2);
+    return s;
+  }
+  function secCycle(pts) { // ridge, valley, ridge, valley: x from −1 to 2
+    var out = [], n = pts.length, i;
+    for (i = n - 1; i > 0; i--) out.push([-pts[i][0], pts[i][1]]);
+    for (i = 0; i < n; i++) out.push(pts[i]);
+    for (i = n - 2; i >= 0; i--) out.push([2 - pts[i][0], pts[i][1]]);
+    return out;
+  }
+  // Damaged rock: a lens under the slope between the valley floor (x = 0) and the top of the
+  // slope xt (the crest, or the edge of what is left of the original flat), of vertical depth
+  // lost · 4s(1 − s), s = x / xt: nothing at either end, and at mid-slope lost = weak · R, the
+  // fraction of the slope's height that the limit has lost of itself (so the lens keeps its
+  // proportions on a slope of any size).
+  function secLens(pts, lost) {
+    var n = pts.length, xt = pts[n - 1][1] - pts[n - 2][1] < 1e-9 ? pts[n - 2][0] : 1;
+    if (!(lost > 0) || xt < 1e-6) return null;
+    var xs = [], top = [], bot = [], i, j = 0, x, z, sx, a, b;
+    for (i = 0; i <= 24; i++) xs.push(xt * i / 24);
+    for (i = 1; i < n - 1; i++) if (pts[i][0] < xt) xs.push(pts[i][0]); // the breaks of slope
+    xs.sort(function (u, w) { return u - w; });
+    for (i = 0; i < xs.length; i++) {
+      x = xs[i];
+      while (j + 2 < n && pts[j + 1][0] < x) j++;
+      a = pts[j]; b = pts[j + 1];
+      z = a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]); sx = x / xt;
+      top.push([x, z]); bot.push([x, z - lost * 4 * sx * (1 - sx)]);
+    }
+    function near(q) { var o = [], k; for (k = q.length - 1; k > 0; k--) o.push([-q[k][0], q[k][1]]); return o.concat(q); } // both sides of the valley at x = 0
+    function far(q) { var o = [], k; for (k = q.length - 1; k >= 0; k--) o.push([2 - q[k][0], q[k][1]]); return o; }         // the slope beyond the crest
+    return secPath(near(top), "M") + secPath(near(bot).reverse(), "L") + "Z" + secPath(far(top), "M") + secPath(far(bot).reverse(), "L") + "Z";
+  }
+  function drawSection() {
+    if (state.section === "off") return;
+    var sec = RL.sectionAt(sim, secStates, tc), f = secCycle(sec.pts), top = secPath(f, "M");
+    var xa = SEC_X - 2.5 * SEC_R, xb = SEC_X + 2.5 * SEC_R, yb = SEC_Y + 2 * SEC_R;
+    var fade = sec.ghost ? Math.max(0, 1 - sec.age / (SEC_GHOST * sim.p.tmax)) : 0;
+    secRock.attr("d", top + "L" + xa + "," + yb + "L" + xb + "," + yb + "Z"); // the mirrored surface ends at the left
+    secWeak.attr("d", secLens(sec.pts, sec.weak * sec.R));
+    secGhost.attr("d", fade > 0 ? secPath(secCycle(sec.ghost), "M") : null).attr("stroke-opacity", fade);
   }
 
   // ---- In-frame sliders ------------------------------------------------------
@@ -273,6 +352,15 @@
     return GS.ui.curveTip(+state.stage >= 5 ? "Limit" : "Static limit", pal.limit, "dashed",
       (+state.stage >= 5 ? "The limit to relief: level at the relief the unshaken slope can hold, and dropping down each dashed line to its dot for the instant of an earthquake." : "The relief the unshaken slope can hold.") + (+state.stage === 7 ? " Each earthquake that does not cause a landslide lowers it by k·D; the next landslide removes the damaged rock and restores it. Right of the cursor it is drawn level, as it stands now." : " Failures happen below it because earthquakes lower the limit for a moment."),
       +state.stage === 7 ? "L<sub>s</sub> ← L<sub>s</sub> − k·D;  landslide: L<sub>s</sub> ← L<sub>s,0</sub>" : "L<sub>eff</sub> = L<sub>s</sub> · (1 − f)");
+  });
+
+  GS.ui.tip.attach(hitSec, function () {
+    var sec = RL.sectionAt(sim, secStates, tc), st = +state.stage;
+    return GS.ui.curveTip("Cross-section", pal.rock, "fill",
+      "A ridge and a valley of the slope whose relief the graph plots: valley floor to crest is " + fL(sec.R) + " at the time cursor. The valley cuts down and a slope at the limiting gradient climbs from it" + (st === 1 ? "; when it reaches the crest the slope is at its limit." : "; each landslide slices the upper slope off and builds the valley floor up by the same amount, leaving a gentler slope that steepens again from the bottom.") +
+      (st >= 4 ? " The limiting gradient is that of the static limit, so the slope fails before all of it gets there." : "") +
+      (st === 7 ? " The pale lens is damaged rock: its depth at mid-slope is " + Math.round(100 * sec.weak) + " % of the slope's height, the share of the intact limit lost so far; the next landslide removes it." : "") + " Details on the Cross-section control below.",
+      "z(x) = min( z<sub>relict</sub>,  z<sub>valley</sub> + (L<sub>lim</sub> / w)·x )");
   });
 
   function readout() {
@@ -359,7 +447,7 @@
     if (id === "stage") {
       if (!samePath(old, sim.path)) { tc = 0; draw(); playing = false; play(); } // a new history: draw it
       else draw();                                                              // same history: keep the cursor, new elements fade in
-    } else if (id !== "theme" && id !== "drawTime" && id !== "drawEarly" && id !== "frame") {
+    } else if (id !== "theme" && id !== "drawTime" && id !== "drawEarly" && id !== "frame" && id !== "section") {
       playing = false; tc = sim.p.tmax; draw();                                 // tuning a parameter: show the whole record
     } else draw();
     syncFrame(); readout(); buttons(); url.write(state);

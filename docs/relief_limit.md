@@ -114,6 +114,49 @@ labelled just "Limit": the limit is one curve, level at the static value and dro
 each earthquake's dashed line to its dot for that instant. In step 7 the static limit is drawn stepped up to
 the time cursor and level beyond it.
 
+**The cross-section** (added 2026-11-24). A circle of radius 125 inside the axes at the
+lower left, just above the time axis and roughly under the first landslide, shows the same history as a slope: two thirds of a cycle of a
+periodic ridge-and-valley section, rock dark brown, air the slide background, ridge on the left and valley on the right so
+that landslides run the way the figure reads. It is a
+reading of the model's state at the time cursor (`GS.relief.sectionAt`), not a separate
+animation, and has no effect on R(t). Half-section z(x), valley at x = 0, ridge at x = w:
+
+    incision    z(x) = min( z_relict(x), z_valley + (C0 / w)·x ),   z_ridge − z_valley = R(t)
+                C0 = the intact ceiling (L in steps 1–3, Ls from step 4): the limit to relief
+                is the relief of a slope that stands at the limiting gradient over its whole
+                length. The valley cuts down, a slope at that gradient climbs from it, and
+                above the point it has reached the older (relict) surface is untouched.
+                From a flat surface this is a V that widens until the flat is gone (R = C0).
+    landslide   R → R′: the surface becomes a straight line with ∫cut = ∫fill. In steps 2–3
+                the line pivots the slope about its midpoint (crest down d/2, floor up d/2,
+                gradient (L − d)/w), and recovery then carries the limiting gradient upslope
+                to x = w·(R − R′)/(L − R′). If a full-length line would stand above the old
+                crest (a small failure on a slope that is steep below and gentle above), the
+                crest is left alone, the floor rises by R − R′, and the line ends at the
+                point of the old surface where cut = fill.
+    weakening   damaged rock is a pale lens under the slope, from the valley floor to the top
+                of the slope x_t (the crest, or the edge of what is left of the original
+                flat), of vertical depth R·(Ls0 − Ls)/Ls0·4s(1 − s), s = x/x_t: nothing at
+                either end and, at mid-slope, the fraction of the slope's height that the
+                limit has lost of itself. It deepens at each earthquake survived, in step with
+                the limit on the graph, and is removed by the landslide that restores the
+                limit. The shape follows studies of fracturing under topographic stress
+                (thickest at mid-slope); the size is the model's, not a stress calculation.
+    datum       the section's mean elevation, which a landslide conserves. Uniform uplift
+                and the river's export of rock are not shown.
+
+The surface is a concave polyline, so every step is exact except the cut = fill point
+(bisection to round-off). For a short time after a landslide (3 % of the record) the
+surface that failed is drawn as a thin line. Choices open to change: from step 4 the
+limiting gradient is the static one, so steps 3 and 4 share R(t) but not the section (in 4
+the slope fails with its upper part still gentle); weakening is drawn (the lens) but does not change
+the gradient the slope steepens to; the vertical scale puts the static limit's relief, the
+highest possible, at 46 % of the diameter in every step, so its crest and valley floor stand
+clear of the rim. The circle is fixed at 17.5 % of the time axis (the first landslide at
+the default R0 and g) and stands below the relief line at the defaults; a low start, a slow
+uplift rate or a very large landslide can bring the line across it (moved here from the
+right margin at the user's direction, 2026-11-24). "Cross-section" (URL `section=off`) hides it.
+
 **In frame and out.** On the last step two sliders sit inside the 16:9 frame, under the
 time axis: weakening (the damage fraction k) and uplift rate (g). They are HTML laid over the SVG inside
 `#slide`, sized in container units so they scale with the figure and go full screen with
@@ -134,7 +177,7 @@ figure are sent back as `{type: "deck-key", key}`. Other URL parameters still ap
 Keys: ← → (or a clicker's PageUp / PageDown) step, space play / pause, R replay, F full
 screen, 1–7 jump. Every parameter is in the URL.
 
-## Validation (`py/test_relief_limit.py`, 80 checks)
+## Validation (`py/test_relief_limit.py`, 90 checks)
 
 - every step: time monotone; each segment is growth at exactly g, a hold, or a drop;
   relief budget `R0 + g·t − Σdrops = R_end` to round-off; relief never above the ceiling;
@@ -162,5 +205,12 @@ screen, 1–7 jump. Every parameter is in the URL.
   reproduces the unfloored rule
 - g = 0.2, 0.6, 1.7: period d/g, and the step-7 budget, growth rate, earthquake bound and
   reference; the earthquake sequence is independent of g
+- the cross-section, over 436 landslides in all steps and eight stress settings: every
+  landslide conserves area (worst residual 2e-16); ridge-to-valley height equals R(t) and the
+  mean elevation is zero at every sampled time (6e-15); the surface is concave, rising, and
+  nowhere steeper than the limiting gradient; a landslide raises the floor and never the
+  crest; the step 1 V and the step 2–3 pivot and recovery against their closed forms; the
+  damage is zero after every landslide and throughout step 6; `GS.relief.sectionFingerprint(n)`
+  equals the Python line on all seven steps (2026-11-24)
 - fingerprints per step; `GS.relief.fingerprint(n)` in the browser console prints the same
   line (all seven equal to nine decimals, 2026-11-21)

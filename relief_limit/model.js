@@ -42,6 +42,9 @@
  * Mirrored in py/relief_limit.py; validated in py/test_relief_limit.py (budget, ceiling,
  * saw-tooth period and count, stages 3 = 4 = 5, damage and its removal by landslides, a time-stepped
  * reference, and fingerprints compared with GS.relief.fingerprint in the browser).
+ *
+ * The same history is also read as a ridge–valley cross-section (sectionStates, sectionAt:
+ * rules above those functions); it is a view of R(t) and of the damage, with no feedback.
  */
 (function (root) {
   "use strict";
@@ -184,5 +187,121 @@
       sum.toFixed(9) + " " + s.lim[s.lim.length - 1][1].toFixed(9) + " " + meanRelief(s.path).toFixed(9);
   }
 
-  GS.relief = { DEFAULTS: DEFAULTS, simulate: simulate, makeQuakes: makeQuakes, ceilingAt: ceilingAt, meanRelief: meanRelief, fingerprint: fingerprint };
+  // R(t) on the piecewise-linear path (after any drop at exactly t).
+  function reliefAt(path, t) {
+    var lo = 0, hi = path.length - 1, mid;
+    while (lo < hi) { mid = (lo + hi + 1) >> 1; if (path[mid][0] <= t) lo = mid; else hi = mid - 1; } // last vertex with time ≤ t
+    if (lo === path.length - 1) return path[lo][1];
+    var a = path[lo], b = path[lo + 1];
+    return b[0] === a[0] ? a[1] : a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+  }
+
+  // ---- The cross-section -----------------------------------------------------
+  // A ridge–valley half-section z(x), valley at x = 0, ridge at x = 1 (x in units of the
+  // half-spacing w, z in units of L), read from the same relief history. Three rules:
+  //   incision    the valley floor cuts down and a slope at the limiting gradient S = C0
+  //               (the intact ceiling: relief C0 over the half-spacing) rises from it; above
+  //               where that slope meets it, the older (relict) surface is untouched:
+  //               z(x) = min(relict(x), z_valley + S·x),   z_valley = z_ridge − R(t)
+  //   landslide   a failure taking relief from R to R′ replaces the surface by a straight
+  //               line of equal area: cut above where it crosses the old surface, fill below.
+  //               If that line would stand above the old ridge, the ridge is left alone, the
+  //               valley floor rises by R − R′, and the line climbs from it to the point x2
+  //               on the old surface at which cut = fill; above x2 the old surface remains
+  //   datum       drawn about the mean elevation of the section, which a landslide conserves
+  // The surface is a concave polyline throughout, so every step is exact except the root x2
+  // (bisection to round-off). Nothing here feeds back on R(t).
+
+  // Integral of the polyline from 0 to xTo (trapezoids).
+  function secArea(poly, xTo) {
+    var a = 0, i, p0, p1, zc;
+    if (xTo === undefined) xTo = 1;
+    for (i = 0; i + 1 < poly.length; i++) {
+      p0 = poly[i]; p1 = poly[i + 1];
+      if (xTo <= p0[0]) break;
+      if (xTo < p1[0]) {
+        zc = p0[1] + (p1[1] - p0[1]) * (xTo - p0[0]) / (p1[0] - p0[0]);
+        return a + 0.5 * (p0[1] + zc) * (xTo - p0[0]);
+      }
+      a += 0.5 * (p0[1] + p1[1]) * (p1[0] - p0[0]);
+    }
+    return a;
+  }
+  function secValue(poly, x) {
+    var i, p0, p1;
+    for (i = 0; i + 1 < poly.length; i++) {
+      p0 = poly[i]; p1 = poly[i + 1];
+      if (x <= p1[0]) return p1[0] === p0[0] ? p0[1] : p0[1] + (p1[1] - p0[1]) * (x - p0[0]) / (p1[0] - p0[0]);
+    }
+    return poly[poly.length - 1][1];
+  }
+  // The surface for relief R over the relict polyline rel: min(rel, z_valley + S·x).
+  function secSurface(rel, R, S) {
+    var n = rel.length, zv = rel[n - 1][1] - R, i, p0, p1, g0, g1, xk;
+    if (rel[0][1] - zv <= EPS) return rel.slice(); // no incision since the relict surface formed
+    for (i = 0; i < n - 1; i++) {
+      p0 = rel[i]; p1 = rel[i + 1];
+      g0 = p0[1] - zv - S * p0[0]; g1 = p1[1] - zv - S * p1[0];
+      if (g1 <= EPS || i === n - 2) { // the limiting slope meets the relict surface here
+        xk = g0 - g1 <= 0 ? p1[0] : p0[0] + (p1[0] - p0[0]) * g0 / (g0 - g1);
+        xk = Math.min(Math.max(xk, p0[0]), p1[0]);
+        if (p1[0] - xk < 1e-9) return [[0, zv]].concat(rel.slice(i + 1));
+        return [[0, zv], [xk, p0[1] + (p1[1] - p0[1]) * (xk - p0[0]) / (p1[0] - p0[0])]].concat(rel.slice(i + 1));
+      }
+    }
+    return rel.slice();
+  }
+  // The surface after a landslide that leaves relief Rn on the surface cur (equal area).
+  function secLandslide(cur, Rn) {
+    var zr = cur[cur.length - 1][1], a = secArea(cur) - 0.5 * Rn, lo = 0, hi = 1, mid, it, x2, out, i;
+    if (a + Rn <= zr + EPS) return [[0, a], [1, a + Rn]]; // straight line, valley to ridge
+    a = zr - Rn;                                          // ridge untouched: find x2 with cut = fill
+    for (it = 0; it < 60; it++) {
+      mid = 0.5 * (lo + hi);
+      if (mid * 0.5 * (a + secValue(cur, mid)) - secArea(cur, mid) > 0) lo = mid; else hi = mid;
+    }
+    x2 = 0.5 * (lo + hi);
+    out = [[0, a], [x2, secValue(cur, x2)]];
+    for (i = 0; i < cur.length; i++) if (cur[i][0] > x2 + 1e-9) out.push(cur[i]);
+    return out;
+  }
+  function secSlope(p) { return p.stage <= 3 ? p.L : p.Ls; }
+  // [{t, rel, pre}]: the relict surface in force from each landslide on (pre = the surface
+  // it failed from), starting from a flat surface at t = 0.
+  function sectionStates(sim) {
+    var S = secSlope(sim.p), rel = [[0, 0], [1, 0]], out = [{ t: 0, rel: rel, pre: null }], i, f, cur;
+    for (i = 0; i < sim.fails.length; i++) {
+      f = sim.fails[i];
+      if (f.from - f.to <= EPS) continue;
+      cur = secSurface(rel, f.from, S);
+      rel = secLandslide(cur, f.to);
+      out.push({ t: f.t, rel: rel, pre: cur });
+    }
+    return out;
+  }
+  // The section at time t: pts (about its mean elevation), the relief R, the surface the
+  // last landslide failed from (ghost, same datum) with the time since it (age), and
+  // weak = (C0 − C) / C0, the damage standing in the slope.
+  function sectionAt(sim, states, t) {
+    var S = secSlope(sim.p), k = 0, st, R, cur, m;
+    while (k + 1 < states.length && states[k + 1].t <= t) k++;
+    st = states[k]; R = reliefAt(sim.path, t);
+    cur = secSurface(st.rel, R, S); m = secArea(cur);
+    function shift(v) { return [v[0], v[1] - m]; }
+    return { pts: cur.map(shift), R: R, ghost: st.pre ? st.pre.map(shift) : null, age: t - st.t,
+             weak: Math.max(0, (S - ceilingAt(sim.lim, t)) / S) };
+  }
+  // Same line as py/test_relief_limit.py prints.
+  function sectionFingerprint(stage, extra) {
+    var s = simulate(Object.assign({}, extra || {}, { stage: stage })), states = sectionStates(s), out = stage + ": " + (states.length - 1);
+    [0.37, 1.91, 3.3].forEach(function (t) {
+      var pts = sectionAt(s, states, t).pts, sum = 0, i;
+      for (i = 0; i < pts.length; i++) sum += Math.abs(pts[i][1]) + pts[i][0];
+      out += " " + sum.toFixed(9) + " " + pts.length;
+    });
+    return out;
+  }
+
+  GS.relief = { DEFAULTS: DEFAULTS, simulate: simulate, makeQuakes: makeQuakes, ceilingAt: ceilingAt, meanRelief: meanRelief, fingerprint: fingerprint,
+                reliefAt: reliefAt, sectionStates: sectionStates, sectionAt: sectionAt, sectionFingerprint: sectionFingerprint };
 })(typeof window !== "undefined" ? window : this);

@@ -210,7 +210,7 @@ Candidate additions, in order: (1) sliding that shuts off in the accumulation zo
 **Side track, 2026-11-21 — limits to relief.** The 2D direction is set aside for now. New
 page `relief_limit/` (R(t), below d1 on the ladder): a seven-step animated 16:9 figure of
 relief growing to a limit, failing by landslides, with earthquakes depressing a static
-limit and then damaging it until the next landslide strips the damaged rock. Event-driven and exact; `py/test_relief_limit.py` (80 checks),
+limit and then damaging it until the next landslide strips the damaged rock. Event-driven and exact; `py/test_relief_limit.py` (80 checks at the time),
 JS fingerprints equal to Python on every step. Rules, defaults and open choices in
 `docs/relief_limit.md`.
 
@@ -234,6 +234,12 @@ then copy the changed files of `Presentation/live/geomorph_sandbox/` into the de
 the user's request; the dev site's copy is one version behind and the Presentation
 repository's refreshed copy is uncommitted. Keep the message contract in
 `relief_limit/app.js` (`relief-step` in, `deck-key` out).
+
+2026-11-24: a small cross-section sits in a circle at the lower left of the graph, under the first landslide, a
+ridge-and-valley slope read from the same state (relief, landslides, damage) by three rules:
+incision at the limiting gradient from the valley up, mass-conserving straight-line
+landslides, a pale mid-slope lens of damaged rock whose depth, as a fraction of the slope's height, is the fraction of the limit lost (`docs/relief_limit.md`, "The cross-section";
+`py/test_relief_limit.py` now 90 checks). Not yet copied to the deck.
 
 Still open on the figure: whether the earthquake drop-lines should take the limit's grey
 and weight now that they are read as part of the limit curve; the label/axis grey against
