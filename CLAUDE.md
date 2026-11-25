@@ -3,11 +3,11 @@
 Browser sandbox that **illustrates geomorphic hypotheses** by implementing the same process
 physics in **1, 2 and 3 spatial dimensions** (column / profile / DEM) as parallel tiers.
 Read `DESIGN.md` first: it holds the purpose, the dimensional ladder, the "asserted vs
-computed" device, and the build order.
+computed" device, and the build order. Its §8 is the current state and what comes next.
 
 ## Layout
 - `core/` pure process laws, forcing, lithology (no DOM). `d1/`, `d2_across/`, `d2_along/`,
-  `d3/` tiers. `ui/` shared panels + URL state. `py/` Python validation. `docs/` methods.
+  `d3/` tiers. `relief_limit/` a presentation figure, R(t) (`docs/relief_limit.md`). `ui/` shared panels + URL state. `py/` Python validation. `docs/` methods.
 - `legacy/uplift_sandbox/` (old 1D reservoir model) and `legacy/terrain_sandbox/` (old 2D-DEM
   model) are a **frozen historic record**. Recycle code from them; do not develop them.
   `legacy/terrain_sandbox/CLAUDE.md` holds the hard-won glacier/SIA numerics — read it before

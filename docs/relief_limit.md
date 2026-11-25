@@ -171,7 +171,9 @@ are URL parameters, so a slide can pin its own pace (`…?embed=1&drawEarly=5`).
 
 **Embedding.** `relief_limit/index.html?embed=1` shows only the 16:9 frame, for use as a
 slide inside another deck (the `Presentation` project). The host sets the step with
-`postMessage({type: "relief-step", step: n, replay: bool})`; step keys pressed inside the
+`postMessage({type: "relief-step", step: n, replay: bool, dur: seconds})`; `dur`, if
+positive, is how long that step takes to draw, overriding `drawEarly` / `drawTime` (absent
+or zero restores them). Step keys pressed inside the
 figure are sent back as `{type: "deck-key", key}`. Other URL parameters still apply.
 
 Keys: ← → (or a clicker's PageUp / PageDown) step, space play / pause, R replay, F full

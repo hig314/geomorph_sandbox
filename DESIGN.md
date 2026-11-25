@@ -1,8 +1,8 @@
 # geomorph_sandbox — design and plan
 
-*Status: plan agreed 2026-09-25. Build-order step 1 (scaffold + shared `core/`, `ui/`,
-`py/`, running d1 page) landed the same day; see `docs/core.md`. Decisions on the §7
-questions are recorded in §8.*
+*Plan agreed 2026-09-25. For where the project stands and what comes next, read §8 (the
+one dated snapshot in this file). §6 is the build order with what is done, §9 the decisions
+on the questions of §7.*
 
 ## 1. Purpose: illustrate hypotheses, not test them
 
@@ -182,6 +182,8 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
 
 ## 7. Open questions / tweaks to discuss
 
+*All answered on 2026-09-25; see §9. Kept as the record of what was asked.*
+
 - d2_along before d2_across (as above) or the reverse?
 - Domain size and resolution defaults for d3 under an ice cap.
 - Whether d1 should be two columns (A/B) or one column with a scenario switch.
@@ -189,68 +191,91 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
   carves convincing valleys?
 - Which tiers get the lockstep A/B view first (cheapest in d1 and d2; d3 doubles the cost).
 
-## 8. State of play (2026-09-29) — the one dated snapshot in this file
+## 8. State of play (2026-11-24) — the one dated snapshot in this file
 
-**Built and live** at <https://hig314.github.io/geomorph_sandbox/>: `core/`, `ui/`, d1
-(reservoir, two columns A/B, isolated node), d2_along (steady-discharge glacier validated
-against a reference SIA, fluvial long profile, lithology, cell-scale regularisations), the
-d1 ↔ d2 link (every node isolated in lockstep, hover the profile to compare), methodology
-tooltips on every control, panel and curve. Python mirrors and tests for all of it
-(`py/test_core.py`, `test_d1_columns.py`, `test_d1_node.py`, `test_d2_along.py`).
+Two lines of work. The ladder (d1, d2, d3) has been paused since 2026-09-29; the work since
+2026-11-21 is a presentation figure, `relief_limit/`. Everything below is committed, pushed
+and live at <https://hig314.github.io/geomorph_sandbox/>.
 
-**Open question from the last session — overdeepenings.** With erosion ∝ sliding and
-sliding = flux/thickness, basins self-limit at tens of metres (the ice over a basin thickens
-until erosion equals uplift, at ~K_g f_s q/U ≈ 150 m here), and raising K_g erodes the
-thin-ice head faster than uplift and kills the glacier. Best setting found:
+### The ladder (paused at 2026-09-29)
+
+**Built:** `core/`, `ui/`, d1 (reservoir, two columns A/B, isolated node), d2_along
+(steady-discharge glacier validated against a reference SIA, fluvial long profile,
+lithology, cell-scale regularisations), the d1 ↔ d2 link (every node isolated in lockstep,
+hover the profile to compare), methodology tooltips on every control, panel and curve.
+Python mirrors and tests for all of it (`py/test_core.py`, `test_d1_columns.py`,
+`test_d1_node.py`, `test_d2_along.py`). Build-order steps 1–3 of §6 are done; 4–6 are not
+started, apart from the pieces of 6 marked ✓ there.
+
+**Open question — overdeepenings.** With erosion ∝ sliding and sliding = flux/thickness,
+basins self-limit at tens of metres (the ice over a basin thickens until erosion equals
+uplift, at ~K_g f_s q/U ≈ 150 m here), and raising K_g erodes the thin-ice head faster than
+uplift and kills the glacier. Best setting found:
 `elaBase=1&peakUplift=2&lexp=2&KgExp=-5&Hmin=50` → 57 m basin over 3 km at 800 kyr.
 Candidate additions, in order: (1) sliding that shuts off in the accumulation zone
 (cold-based ice above the ELA; cheap, the flowline analogue of d1's buzzsaw window);
 (2) tributary flux convergence (d3); (3) effective pressure / hydrology on adverse slopes.
 
-**Side track, 2026-11-21 — limits to relief.** The 2D direction is set aside for now. New
-page `relief_limit/` (R(t), below d1 on the ladder): a seven-step animated 16:9 figure of
-relief growing to a limit, failing by landslides, with earthquakes depressing a static
-limit and then damaging it until the next landslide strips the damaged rock. Event-driven and exact; `py/test_relief_limit.py` (80 checks at the time),
-JS fingerprints equal to Python on every step. Rules, defaults and open choices in
-`docs/relief_limit.md`.
+**Next on the ladder.** Decide on (1), then step 4 (d2_across) with its own isolate-a-point
+link. Landslide laws (Bishop slices) go into `core/laws.js` with d2_across. Eventual home:
+a static copy inside landslidescience.org, under that site's own dev → test → approve →
+deploy rule.
 
-State of that side track at 2026-11-23 (the figure is committed and pushed, `f09f1fb`): the
-concept is where the user wants it. Seven steps; in-frame sliders for weakening and uplift
-rate on the last; random power-law landslide sizes; a relief floor at 10 % of the graph
-height; earthquakes in steps 4–5 stipulated to coincide with relief reaching its limit; two
-drawing times (`drawEarly` for steps 1–5, `drawTime` for 6–7, both URL parameters); from
-step 5 the lower limit line is gone and the upper one is labelled "Limit" (one curve that
-dips at each earthquake), step 4 keeping "Static limit" and "Limit during earthquakes".
+### Limits to relief (`relief_limit/`, 2026-11-21 to 2026-11-24)
 
-The figure is presented from a deck that now lives on landslidescience.org (slide 37 of
-`/decks/gc_outline/`, edited online), built by a separate project,
+A seven-step animated 16:9 figure of relief against time, R(t), below d1 on the ladder:
+relief grows to a limit, fails by landslides, earthquakes pull the limit down from a static
+limit, and damage lowers the static limit until the next landslide strips the damaged rock.
+Event-driven and exact. Rules, defaults, figure conventions and the choices left open are
+in `docs/relief_limit.md`; `py/test_relief_limit.py` has 90 checks, and the JS fingerprints
+(`GS.relief.fingerprint(n)`, `GS.relief.sectionFingerprint(n)`) equal the Python lines on
+all seven steps.
+
+The concept is where the user wants it. What the figure has:
+
+- seven steps; in-frame sliders for weakening and uplift rate on the last
+- random power-law landslide sizes; a relief floor at 10 % of the graph height
+- earthquakes in steps 4–5 stipulated to coincide with relief reaching its limit
+- two drawing times, `drawEarly` (steps 1–5) and `drawTime` (6–7), both URL parameters
+- step 4 labels "Static limit" and "Limit during earthquakes"; from step 5 one curve,
+  "Limit", that dips at each earthquake
+- a ridge-and-valley cross-section in a circle at the lower left (2026-11-24), read from
+  the same state by three rules: incision at the limiting gradient from the valley up,
+  mass-conserving straight-line landslides, a pale mid-slope lens of damaged rock
+
+**Still open on the figure:**
+
+- whether the earthquake drop-lines should take the limit's grey and weight, now that they
+  read as part of the limit curve
+- the label and axis grey against "dark annotation on white"
+- the asserted c = 0.5; distance to the earthquake source is not sampled
+- Save SVG leaves out the in-frame sliders
+- a drawing time per step, if the early/late split proves too coarse
+- in the cross-section: weakening is drawn but does not change the gradient the slope
+  steepens to; steps 3 and 4 share R(t) but not the section
+
+### The deck
+
+The figure is presented from a deck on landslidescience.org (slide 37 of
+`/decks/gc_outline/`, a private draft edited online), built by a separate project,
 `~/Claude_projects/Presentation`, which works in its own sessions (handoff notes in its
 `CLAUDE.md`). The deck carries a *copy* of `relief_limit/`, `core/` and `ui/` in its own
 `live/geomorph_sandbox/` folder, so pushing this repository updates GitHub Pages but not
-the deck. To get a change of the figure there: `sh ~/Claude_projects/Presentation/tools/sync_live.sh`,
-then copy the changed files of `Presentation/live/geomorph_sandbox/` into the deck's
-`live/geomorph_sandbox/` on the server (compare by checksum first; leave the deck's
-`deck.json` alone, it holds the edits made online). Done for production on 2026-11-23, at
-the user's request; the dev site's copy is one version behind and the Presentation
-repository's refreshed copy is uncommitted. Keep the message contract in
-`relief_limit/app.js` (`relief-step` in, `deck-key` out).
+the deck. A change reaches the deck only when the user asks for it:
 
-2026-11-24: a small cross-section sits in a circle at the lower left of the graph, under the first landslide, a
-ridge-and-valley slope read from the same state (relief, landslides, damage) by three rules:
-incision at the limiting gradient from the valley up, mass-conserving straight-line
-landslides, a pale mid-slope lens of damaged rock whose depth, as a fraction of the slope's height, is the fraction of the limit lost (`docs/relief_limit.md`, "The cross-section";
-`py/test_relief_limit.py` now 90 checks). Committed (`d56122c`) and copied to the production deck the same day, at the user's request (three files, verified by checksum); the dev site's copy and the Presentation repository's refreshed copy (uncommitted) were not touched.
+1. commit and push here;
+2. `sh ~/Claude_projects/Presentation/tools/sync_live.sh`;
+3. compare `Presentation/live/geomorph_sandbox/` with the deck's `live/geomorph_sandbox/`
+   on the server by checksum (the server path is `PROD` in `Presentation/tools/site.py`);
+4. copy only the files that differ. Leave the deck's `deck.json` alone (it holds the edits
+   made online) and do not use `site.py push --replace`.
 
-Still open on the figure: whether the earthquake drop-lines should take the limit's grey
-and weight now that they are read as part of the limit curve; the label/axis grey against
-"dark annotation on white"; the asserted c = 0.5; distance to the earthquake source not
-sampled; Save SVG leaving out the in-frame sliders; a drawing time per step if the
-early/late split proves too coarse.
+Keep the message contract in `relief_limit/app.js` (`relief-step` in, `deck-key` out).
 
-**Next steps.** Decide on (1) above, then step 4 (d2_across) with its own isolate-a-point
-link. Landslide laws (Bishop slices) go into `core/laws.js` with d2_across. Eventual home:
-a static copy inside landslidescience.org (see the deployment notes in the session log and
-the site's own dev→test→approve→deploy rule).
+State of the copies at 2026-11-24: the production deck matches this repository at `d56122c`
+(verified by checksum, not by viewing the deck, which needs the owner's sign-in). The dev
+site's copy has not been updated since before 2026-11-23. The Presentation repository's refreshed `live/` copy is
+uncommitted there.
 
 ## 9. Decisions (2026-09-25)
 
