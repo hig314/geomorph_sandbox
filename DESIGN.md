@@ -274,8 +274,8 @@ Keep the message contract in `relief_limit/app.js` (`relief-step` in, `deck-key`
 
 State of the copies at 2026-11-24: the production deck matches this repository at `d56122c`
 (verified by checksum, not by viewing the deck, which needs the owner's sign-in). The dev
-site's copy has not been updated since before 2026-11-23. The Presentation repository's refreshed `live/` copy is
-uncommitted there.
+site's copy has not been updated since before 2026-11-23. The Presentation repository's `live/` copy matches too
+(its commit `525376b`).
 
 ## 9. Decisions (2026-09-25)
 
