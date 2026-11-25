@@ -239,7 +239,7 @@ repository's refreshed copy is uncommitted. Keep the message contract in
 ridge-and-valley slope read from the same state (relief, landslides, damage) by three rules:
 incision at the limiting gradient from the valley up, mass-conserving straight-line
 landslides, a pale mid-slope lens of damaged rock whose depth, as a fraction of the slope's height, is the fraction of the limit lost (`docs/relief_limit.md`, "The cross-section";
-`py/test_relief_limit.py` now 90 checks). Not yet copied to the deck.
+`py/test_relief_limit.py` now 90 checks). Committed (`d56122c`) and copied to the production deck the same day, at the user's request (three files, verified by checksum); the dev site's copy and the Presentation repository's refreshed copy (uncommitted) were not touched.
 
 Still open on the figure: whether the earthquake drop-lines should take the limit's grey
 and weight now that they are read as part of the limit curve; the label/axis grey against
