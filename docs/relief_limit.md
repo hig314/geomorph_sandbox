@@ -271,16 +271,26 @@ under the main graph. Three effects of the glacier, as the user specified them:
                  friction angle, so no landslide leaves less relief than that. Without it,
                  strong weakening took relief to 0.17 for most of the retreating record. The
                  value is a choice; `py/xsection_experiment.py` is where it comes from (below)
-    at the floor (2026-11-27, later the same day) damage takes the cohesion, not the friction:
-                 D ≤ T0 − floor, so T ≥ floor + B·b and a slope at the floor is never failed
-                 by fracturing. Fractures past that add nothing and are not drawn. Within
-                 dMin (the smallest landslide) of the floor there is no landslide either:
-                 the slope ravels, R following T down with no event and the damage staying
-                 (`sim.ravel`, the relief lost that way; the section lowers its crest by it
-                 with no scar). Before this, a slope at the floor went on "failing": the
-                 damage was cleared and the threshold stepped back up with no drop in
-                 relief (28 zero-drop and 550 sub-dMin landslides over a 392-run scan of
-                 both histories, W and E 0–3, four seeds; none after)
+    near the floor (2026-11-27, later the same day; replaces a first try the same day that
+                 capped the damage and let the slope ravel, under which damage visibly stopped)
+                 two rules keep a slope at the floor from "failing" with no drop (before, the
+                 damage was cleared and the threshold stepped back up with relief unchanged:
+                 28 zero-drop landslides in a 392-run scan of both histories, W and E 0–3,
+                 four seeds):
+                 damage takes the cohesion, a share of what is left at each fracture:
+                   T = T0 − Dc·(1 − exp(−D/Dc)) + B·b,  Dc = T0 − floor,  D = Σ W·q since the
+                   last landslide. For small D this is T0 − D + B·b as before; T never falls
+                   below floor + B·b; the fracture steps shrink as the rock nears fully
+                   broken but never stop. A slope close to the floor needs far more damage
+                   to fail (R − floor = 0.03 needs D = 0.69 with no ice, against 0.27 for a
+                   linear rule), so its landslides are rarer.
+                 a landslide takes at most half the relief above the floor (dFrac = 0.5):
+                   R ← max(T − d, floor + (1 − dFrac)·(R − floor)), so relief nears the floor
+                   by ever smaller drops and never sits on it.
+                 After: no zero-drop landslide in the scan, none under 0.005 T0, 18 of 9807
+                 under 0.02 T0; lowest relief 0.708. Cost: weakening can take at most
+                 T0 − floor = 0.3 T0 off the threshold, so the Weakening slider saturates
+                 (thick glacier, 22 landslides at × 1 and at × 3)
 
 Units: relief and threshold in the intact, ice-free threshold T0; time in kyr. H and b are
 linear on each grid cell, so T and R are linear between events and every fracture and failure time
@@ -298,11 +308,10 @@ last four in the plunge. With weakening at zero and the default erosion, 19 of 2
 fall where the ice is thinning (debuttressing); weakening brings failures forward, at lower
 relief.
 
-The retreating glacier (seed 7): at the defaults 103 fractures that lower the threshold (154 in all; the
-rest fall on rock already broken to the floor) and 21 landslides. Each
-complete retreat brings a cascade of failures as the buttressing goes (134–128 ka, relief
-1.40 → 0.71, and by ravelling to the floor, 0.70, after the stade, with no landslide: the slope
-is within the smallest landslide of the floor; 17–10 ka, 1.46 → 0.83); relief then
+The retreating glacier (seed 7): at the defaults 154 fractures and 24 landslides, one of them
+at 122.7 ka, after the stade. Each
+complete retreat brings a cascade of failures as the buttressing goes (134–122 ka, relief
+1.41 → 0.81; 17–10 ka, 1.42 → 0.92; the last two, 0.98 → 0.81, with the final retreat); relief then
 stands still with the glacier gone. The
 returning ice fractures the rock fast, because thin ice is where buttressing changes most,
 so the fracture marks crowd where the glacier re-advances; the last two failures come with
@@ -398,7 +407,7 @@ the mean elevation. Replaced at the user's direction: after a large drop that li
 very low angle (7° at the lowest relief), and the two damage lenses, pinching out at the
 valley centre, left a peak of dark rock under the middle of the glacier.
 
-Validation (`py/test_glacier_buttress.py`, 130 checks over 14 settings, three of them the
+Validation (`py/test_glacier_buttress.py`, 116 checks over 14 settings, three of them the
 retreating glacier): relief budget R0 + E·(time with ice) − Σdrops = R_end (8e-14); relief grows at exactly E with ice and not at all without; the threshold reconstructed as
 T0 + B·b − (fracture drops since the last failure) at every vertex (2e-16); each fracture
 after exactly its quota of ∫|d(B·b)| (8e-15), the quota within qMean·(1 ± qJit), and drops W·q; relief never above the threshold or
@@ -424,10 +433,12 @@ without weakening; the texture's offset rises at E with ice, not at all without,
 E·(time with ice) at the end (1e-9). The convergence test's condition on the end relief was
 loosened with the frictional floor: its error must be smallest at the finest step, not fall at
 every step (retreating history: 1.2e-2 → 3.1e-2 → 2.9e-2 → 1.5e-5, an event order near the end
-that coarse steps get wrong). With ravelling at the floor the same history converges cleanly again
-(8.5e-3 → 1.2e-3 → 2.8e-4 → 5.6e-5); the looser condition is kept. Added with the floor rule: the
-budget includes the ravelled relief; damage between landslides is W·q per fracture up to
-T0 − floor; ravelling happens only within dMin of the floor and no landslide is smaller than dMin. `GS.glacier.sectionFingerprint()` equals the Python line for three
+that coarse steps get wrong). With cohesion-limited damage and the half-of-what-is-left rule the
+coarsest step (0.01 kyr) runs a different event sequence for two settings (failure count off by
+one for E × 2 and the retreating history), so the count must match, and the 8-fold improvement
+hold, over the three finer steps (retreating history: time error 5.4 → 0.055 → 0.0041 → 0.0015 kyr,
+end relief 1.9e-2 → 6.1e-3 → 6.3e-4 → 1.7e-4). The fracture check is now: each step equals the
+cohesion lost to W·q more damage, and the loss between landslides never exceeds T0 − floor. `GS.glacier.sectionFingerprint()` equals the Python line for three
 settings (2026-11-27). `GS.glacier.fingerprint()` equals the Python line for
 three settings (2026-11-27).
 

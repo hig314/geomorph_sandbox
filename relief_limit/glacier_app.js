@@ -41,7 +41,7 @@
   }
   var SRC = "relief_limit/glacier_model.js · py/test_glacier_buttress.py";
   var m = {
-    weak: M("Weakening", ["stress change since the last fracture = change in buttressing:  S = ∫ |d(B·b)/dt| dt", "fracture when S reaches q,  q = 0.025 × (1 ± 0.25, uniform):  D ← D + W·q", "W = (slider) × " + W_REF + ",   T = T<sub>0</sub> − D + B·b(H),   D ≤ T<sub>0</sub> − floor"],
+    weak: M("Weakening", ["stress change since the last fracture = change in buttressing:  S = ∫ |d(B·b)/dt| dt", "fracture when S reaches q,  q = 0.025 × (1 ± 0.25, uniform):  D ← D + W·q", "W = (slider) × " + W_REF + ",   T = T<sub>0</sub> − D<sub>c</sub>·(1 − e<sup>−D/D<sub>c</sub></sup>) + B·b(H),   D<sub>c</sub> = T<sub>0</sub> − floor"],
       "How much the rock beside the glacier is weakened by changes in the support the ice gives it. Every change in buttressing, up or down, changes the stress in the rock; the change accumulates until the rock fractures, after a nearly fixed amount, and the threshold then steps down by W times that amount. So the steps are small and regular, and they follow the buttressing: frequent where the ice is thin and its support changes fast (the terminations, the interglacials, the final plunge), rare under thick ice, whose fluctuations hardly change the support. The damage stays until a landslide removes the damaged rock, after which the threshold is back to its buttressed value. At × 1 the threshold loses as much to damage as the buttressing has changed since the last landslide. At zero the threshold is set by buttressing alone and failures come only where erosion reaches it or the ice thins under the relief; raise it and failures come earlier, at lower relief, and more of them are set off by a fracture.", SRC, "asserted"),
     erosion: M("Erosion rate", ["dR/dt = E = (slider) × " + GL.DEFAULTS.Eref + " T<sub>0</sub> per kyr"],
       "Glacial erosion deepening the valley and so raising the relief of its walls, at a constant rate wherever there is ice: the whole record for the thick glacier, and not while the retreating glacier is gone (relief then stands still). At the default, relief would grow by 2.4 times the ice-free threshold over the 200 kyr if nothing failed. Faster erosion brings relief up to the threshold sooner after each landslide, so failures are more frequent and relief stays close to the threshold; at zero relief only falls, and only the thinning ice or fracturing can fail the slope.", SRC, "asserted"),
@@ -189,7 +189,7 @@
     thrLine.attr("stroke", pal.limit);
     hitThr.attr("d", poly(sim.thr, y));
     fracG.selectAll("line").remove();
-    fracG.selectAll("line").data(sim.fracs.filter(function (d) { return d.drop > 0; })).enter().append("line")
+    fracG.selectAll("line").data(sim.fracs).enter().append("line")
       .attr("x1", function (d) { return x(d.t); }).attr("x2", function (d) { return x(d.t); })
       .attr("y1", function (d) { return y(d.from); }).attr("y2", function (d) { return y(d.to); })
       .attr("stroke", pal.ink).attr("stroke-width", 1.25 * WT).attr("stroke-linecap", "round");
@@ -372,8 +372,8 @@
   function kyr(t) { var a = sim.p.tmax - t; return a < 0.05 ? "today" : a.toFixed(1) + " ka"; }
   GS.ui.tip.attach(hitRelief, function () {
     return GS.ui.curveTip("Relief", pal.ink, "solid",
-      "Grows at a constant rate by glacial erosion wherever there is ice (it stands still while the glacier is gone) and drops at each landslide, to d below the threshold in force (d from a truncated power law, as in the relief figure), but never below a frictional floor of 0.7 T<sub>0</sub>: broken rock still stands at its friction angle. Damage cannot take the threshold below that floor either (it removes cohesion, not friction), so a slope already at the floor has no landslides however fractured it is: within the smallest landslide of the floor it ravels, the relief following the threshold down with no event. " + sim.fails.length + " landslides in this record.",
-      "dR/dt = E with ice, 0 without;  failure where R = T:  R ← max(T − d, floor);  no landslide if R − floor < d<sub>min</sub>");
+      "Grows at a constant rate by glacial erosion wherever there is ice (it stands still while the glacier is gone) and drops at each landslide, to d below the threshold in force (d from a truncated power law, as in the relief figure), but never below a frictional floor of 0.7 T<sub>0</sub>: broken rock still stands at its friction angle. A landslide takes at most half of the relief standing above that floor, so relief nears the floor by ever smaller drops; and because damage can only take the rock's cohesion (the part of the threshold above the floor), a slope close to the floor needs far more damage to fail, so its landslides are rarer. " + sim.fails.length + " landslides in this record.",
+      "dR/dt = E with ice, 0 without;  failure where R = T:  R ← max(T − d, floor + ½·(R − floor))");
   });
   GS.ui.tip.attach(hitThr, function () {
     return GS.ui.curveTip("Threshold", pal.limit, "dashed",
@@ -407,7 +407,7 @@
       else if (GL.valueAt(sim.ice, Math.min(f.t + 0.25, sim.p.tmax)) < GL.valueAt(sim.ice, Math.max(f.t - 0.25, 0))) nd++;
     });
     var h = "<b>Glacier buttressing" + (sim.p.ice === "retreat" ? ", a retreating glacier" : "") + ".</b> The ice raises the threshold, most sensitively where it is thin (saturating); each change in buttressing fractures the rock and steps the threshold down (black marks); erosion raises relief steadily.<br>";
-    h += "Landslides: <b>" + n + "</b> (" + nf + " set off by a fracture, " + nd + " as the ice thinned, " + (n - nf - nd) + " reached by erosion)  ·  fractures: <b>" + sim.fracs.filter(function (d) { return d.drop > 0; }).length + "</b>";
+    h += "Landslides: <b>" + n + "</b> (" + nf + " set off by a fracture, " + nd + " as the ice thinned, " + (n - nf - nd) + " reached by erosion)  ·  fractures: <b>" + sim.fracs.length + "</b>";
     if (n) h += "  ·  first landslide " + kyr(sim.fails[0].t);
     d3.select("#readout").html(h);
   }

@@ -22,16 +22,16 @@
  *               weakening    the stress change is the change in buttressing |d(B·b)|; it
  *                            accumulates from the last fracture, and when it reaches a quota
  *                            q = qMean·(1 + qJit·(2u − 1)) (u uniform, its own stream) the rock
- *                            fractures: Dmg += W·q, a step down in T. Damage takes the
- *                            cohesion, not the friction: Dmg ≤ T0 − floor, so T ≥ floor + B·b
- *               a landslide removes the damaged rock: Dmg ← 0
+ *                            fractures: D += W·q, a step down in T, where
+ *                            Dmg = Dc·(1 − exp(−D/Dc)), Dc = T0 − floor: damage takes the
+ *                            cohesion, a share of what is left at each fracture, never the
+ *                            friction (the floor); for small D, Dmg = D
+ *               a landslide removes the damaged rock: D ← 0
  *   relief      dR/dt = E where there is ice (glacial erosion, constant), 0 on an ice-free grid
  *               cell (H = 0 at both ends); with "thick" ice is present the whole time
  *   failure     where R reaches T (erosion, or T falling as the ice thins) or a fracture steps
- *               T to or below R:  R ← max(T − d, floor), then Dmg ← 0; d from a truncated
- *               power law on [dMin, dMax] (its own stream, as model.js). Within dMin of the floor
- *               there is no landslide: the slope ravels, R follows T down (sim.ravel, the relief
- *               lost that way so far) and the damage stays
+ *               T to or below R:  R ← max(T − d, floor + (1 − dFrac)·(R − floor)), then Dmg ← 0; d from a truncated
+ *               power law on [dMin, dMax] (its own stream, as model.js)
  *
  * H and b are linear on each grid cell, so T and R are linear between events and every event time
  * is exact. Mirrored in py/glacier_buttress.py; validated in py/test_glacier_buttress.py
@@ -76,6 +76,8 @@
     qMean: 0.025,  // mean change in buttressing between fractures (threshold units)
     qJit: 0.25,    // quota spread: q uniform in qMean·(1 ± qJit)
     R0: 1.3,       // above the mean relief and the ice-free threshold: a slope held up by the ice
+    dFrac: 0.5,    // a landslide takes at most this fraction of the relief standing above the floor, so
+                   // relief nears the floor by ever smaller drops and never sits on it
     floor: 0.7,    // frictional floor: broken rock still stands at its friction angle, so no landslide
                    // leaves less relief than this (py/xsection_experiment.py); was 0.165 until 2026-11-27
     dMin: 0.05, dMax: 0.5, dAlpha: 1,
@@ -132,29 +134,20 @@
     var p = Object.assign({}, DEFAULTS, params || {});
     var ice = makeIce(p), nextD = makeSizes(p), nextQ = makeQuotas(p);
     var E = p.E * p.Eref, B = p.B, T0 = p.T0, W = p.W, floor = Math.max(p.floor, 0);
-    var Dc = Math.max(T0 - floor, 0);             // damage can take the cohesion, not the friction
-    var dmin = Math.min(p.dMin, p.dMax);          // the smallest landslide
-    var lost = 0, ravel = [[0, 0]], tp, add;      // relief lost by ravelling so far (no landslide)
+    var Dc = Math.max(T0 - floor, 0);             // the cohesive part of the threshold: all that damage can take
+    var Draw = 0, Dn;                             // Dmg the threshold lost, Draw the damage (sum of W·q) behind it
     var Dmg = 0, acc = 0, q = nextQ(), t = 0, H = ice[0][1], Bt = B * butt(H, p), Bt1, sb;
     var R = Math.min(p.R0, T0 + Bt);
     var path = [[t, R]], thr = [[t, T0 + Bt]], fracs = [], fails = [];
     var i, t1, H1, s, Ec, gap, closing, tf, tq, tn, dt, Told;
 
-    function shed(t0) {                           // R down to T without a landslide, from t0 to t
-      var T = T0 - Dmg + Bt;
-      if (R > T) { ravel.push([t0, lost]); lost += R - T; ravel.push([t, lost]); R = T; }
-    }
-
     function fail(cause) {
-      var T, d, Rn;
-      if (R - floor < dmin) {                     // within the smallest landslide of the frictional floor:
-        if (R > T0 - Dmg + Bt) { shed(t); path.push([t, R]); }   // the slope ravels down with T, and the damage stays
-        return;
+      var T = T0 - Dmg + Bt, d = nextD(), Rn = Math.max(T - d, floor + (1 - p.dFrac) * Math.max(R - floor, 0));
+      if (Rn < R) {
+        fails.push({ t: t, from: R, to: Rn, d: d, lim: T, dmg: Dmg, cause: cause });
+        R = Rn; path.push([t, R]);
       }
-      T = T0 - Dmg + Bt; d = nextD(); Rn = Math.max(T - d, floor);
-      fails.push({ t: t, from: R, to: Rn, d: d, lim: T, dmg: Dmg, cause: cause });
-      R = Rn; path.push([t, R]);
-      if (Dmg > 0) { thr.push([t, T]); Dmg = 0; thr.push([t, T0 + Bt]); } // the landslide removes the damaged rock
+      if (Dmg > 0) { thr.push([t, T]); Dmg = 0; Draw = 0; thr.push([t, T0 + Bt]); } // the landslide removes the damaged rock
     }
 
     for (i = 0; i + 1 < ice.length; i++) {
@@ -167,23 +160,20 @@
         gap = T0 - Dmg + Bt - R;                // ≥ 0
         closing = Ec - sb;                         // d(R − T)/dt
         tf = closing > 0 ? t + gap / closing : Infinity;
-        if (gap <= EPS && R - floor < dmin) tf = Infinity;   // ravelling at the floor: R follows T
         tq = sb !== 0 ? t + (q - acc) / Math.abs(sb) : Infinity;
         tn = Math.min(tf, tq, t1);
         if (tn >= t1 - EPS && tf > t1 - EPS && tq > t1 - EPS) {
-          tp = t;
           acc += Math.abs(sb) * (t1 - t); R += Ec * (t1 - t); t = t1; H = H1; Bt = Bt1;
-          shed(tp);
+          R = Math.min(R, T0 - Dmg + Bt);
           break;
         }
-        dt = tn - t; tp = t;
+        dt = tn - t;
         acc += Math.abs(sb) * dt; R += Ec * dt; H += s * dt; Bt += sb * dt; t = tn;
-        shed(tp);
         path.push([t, R]); thr.push([t, T0 - Dmg + Bt]);
         if (tq <= tf) {                            // fracture
           Told = T0 - Dmg + Bt;
-          add = Math.min(W * q, Dc - Dmg); Dmg += add; acc = 0;
-          fracs.push({ t: t, drop: add, q: q, from: Told, to: Told - add });   // drop 0 once the rock is fully broken
+          Draw += W * q; Dn = Dc > 0 ? Dc * (1 - Math.exp(-Draw / Dc)) : 0; acc = 0;
+          fracs.push({ t: t, drop: Dn - Dmg, q: q, from: Told, to: Told - (Dn - Dmg) }); Dmg = Dn;
           q = nextQ();
           thr.push([t, T0 - Dmg + Bt]);
           if (R >= T0 - Dmg + Bt - EPS) fail("fracture");
@@ -194,8 +184,7 @@
       }
       path.push([t, R]); thr.push([t, T0 - Dmg + Bt]);
     }
-    ravel.push([t, lost]);
-    return { path: path, thr: thr, ice: ice, fracs: fracs, fails: fails, ravel: ravel, p: p };
+    return { path: path, thr: thr, ice: ice, fracs: fracs, fails: fails, p: p };
   }
 
   // Value at t on a time-ordered polyline (after any step at exactly t).
@@ -305,15 +294,12 @@
   // [{t, rel, pre}]: the relict surface from each landslide on; at t = 0 a trough of relief R0
   // under a crest at 0, with the failure slope from the crest down to it.
   function sectionStates(sim) {
-    var C = secC(sim.p), R0 = sim.path[0][1], i, f, cur, ls, g, j, lp = 0, ln;
+    var C = secC(sim.p), R0 = sim.path[0][1], i, f, cur, ls, g, j;
     var rel = secLandslide(secMin([[0, 0], [1, 0]], secTrough(-R0, Math.max(C, R0))), R0).rel;
     var out = [{ t: 0, rel: rel, pre: null, ghost: null }];
     for (i = 0; i < sim.fails.length; i++) {
       f = sim.fails[i];
       if (f.from - f.to <= EPS) continue;
-      ln = valueAt(sim.ravel, f.t);
-      if (ln - lp > EPS) rel = secLandslide(secSurface(rel, f.from + ln - lp, C), f.from).rel;   // ravelling since the last landslide
-      lp = ln;
       cur = secSurface(rel, f.from, C); ls = secLandslide(cur, f.to); rel = ls.rel;
       g = [[ls.xcut, secValue(cur, ls.xcut)]];             // ghost: the part of the old surface that failed
       for (j = 0; j < cur.length; j++) if (cur[j][0] > ls.xcut + 1e-12) g.push(cur[j].slice());
@@ -328,10 +314,7 @@
     var p = sim.p, C = secC(p), k = 0, st, R, cur, m, ice = sim.ice, n = ice.length - 1, i, ba, bb, Ti, H, pts;
     while (k + 1 < states.length && states[k + 1].t <= t) k++;
     st = states[k]; R = valueAt(sim.path, t);
-    var lt = valueAt(sim.ravel, t), rv = lt - valueAt(sim.ravel, st.t);
-    cur = secSurface(st.rel, R + rv, C);
-    if (rv > EPS) cur = secLandslide(cur, R).rel;          // ravelling: the crest down by rv, no scar drawn
-    m = cur[0][1] + SEC_DATUM * C;
+    cur = secSurface(st.rel, R, C); m = cur[0][1] + SEC_DATUM * C;
     function shift(v) { return [v[0], v[1] - m]; }
     pts = cur.map(shift);
     i = Math.min(Math.max(Math.floor(t / p.dtH), 0), n - 1);
@@ -339,7 +322,7 @@
     Ti = p.T0 + ba + (bb - ba) * (t - ice[i][0]) / (ice[i + 1][0] - ice[i][0]);
     H = valueAt(ice, t);
     // rock uplift relative to the floor so far = glacial erosion so far (the texture's offset)
-    var up = R - sim.path[0][1] + lt, j;
+    var up = R - sim.path[0][1], j;
     for (j = 0; j < sim.fails.length && sim.fails[j].t <= t; j++) up += sim.fails[j].from - sim.fails[j].to;
     return { up: up, pts: pts, R: R, ghost: st.ghost ? st.ghost.map(shift) : null, age: t - st.t,
              weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + Math.min(SEC_ICE * C * H, SEC_CAP * R) };
