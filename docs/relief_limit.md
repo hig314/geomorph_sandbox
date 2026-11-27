@@ -266,6 +266,11 @@ under the main graph. Three effects of the glacier, as the user specified them:
                  steps T to or below R: R ← max(T − d, floor), d from the truncated power law of
                  steps 6–7 (0.05–0.5 T0, α = 1); then D ← 0, the landslide removes the damaged
                  rock (the step-7 rule, carried over: a choice, open to change)
+    floor        0.7 T0, a frictional floor (2026-11-27; 0.165, 10 % of the graph height as in
+                 the seven steps, before): rock broken to no cohesion still stands at its
+                 friction angle, so no landslide leaves less relief than that. Without it,
+                 strong weakening took relief to 0.17 for most of the retreating record. The
+                 value is a choice; `py/xsection_experiment.py` is where it comes from (below)
 
 Units: relief and threshold in the intact, ice-free threshold T0; time in kyr. H and b are
 linear on each grid cell, so T and R are linear between events and every fracture and failure time
@@ -283,10 +288,11 @@ last four in the plunge. With weakening at zero and the default erosion, 19 of 2
 fall where the ice is thinning (debuttressing); weakening brings failures forward, at lower
 relief.
 
-The retreating glacier (seed 7): at the defaults 154 fractures and 22 landslides, one of them
+The retreating glacier (seed 7): at the defaults 154 fractures and 23 landslides, one of them
 at 122.8 ka, set off by the damage the stade's coming and going left behind. Each
 complete retreat brings a cascade of failures as the buttressing goes (134–128 ka, relief
-1.40 → 0.71; 18–10 ka, 1.48 → 0.86); relief then stands still with the glacier gone. The
+1.40 → 0.71, and to the floor, 0.70, after the stade; 17–10 ka, 1.44 → 0.85); relief then
+stands still with the glacier gone. The
 returning ice fractures the rock fast, because thin ice is where buttressing changes most,
 so the fracture marks crowd where the glacier re-advances; the last two failures come with
 the final retreat. With erosion × 0.25 and no weakening: relief builds to 1.49, fails in a
@@ -322,28 +328,58 @@ by landslides from the crest down:
                 about 2); it is a polyline on 32 cells and the min is exact for polylines.
                 As the floor goes down the U climbs the wall: the glacier oversteepens it.
                 No erosion, so no incision, while the glacier is gone.
-    landslide   R → R′: the crest comes down by R − R′, the floor stays. The failure surface
-                is a plane from the new crest down at a fixed slope S = 1 (37° as drawn), not
-                below the floor:
-                z(x) = min( z(x), max( z_floor, z_crest′ − S·(1 − x) ) )  for x ≥ x_cut,
-                x_cut the highest point where the plane meets the old surface. A slab off the
-                upper wall; the glacier's bed below x_cut is untouched. The wall is never
-                gentler than S however large the drop: a drop to R′ below about 0.83 (where
-                the plane no longer meets the U) cuts to the floor and leaves it flat at the
-                wall's foot, and the returning glacier cuts a new U into it. The debris is not
-                kept in the section: it lands on the glacier and is carried away.
+    landslide   R → R′: the crest comes down by R − R′, the floor stays. A wedge off the upper
+                wall: the failure surface is a plane from the new crest down to the wall,
+                z(x) = min( z(x), z_crest′ − s·(1 − x) )  for x ≥ x_cut,  s = min(S, s_tan),
+                S = 1.2 (43° as drawn), s_tan the steepest slope at which a line from the new
+                crest still meets the old surface (the tangent to the trough), x_cut the
+                highest point where the plane meets the old surface. Below x_cut nothing
+                changes, so the floor is always a U. s < S only after a very large drop (R′
+                below about 0.96); at the frictional floor, R′ = 0.7, s = 0.81 (31° as drawn),
+                the gentlest slope the section can show. The debris is not kept in the
+                section: it lands on the glacier and is carried away.
     ice         the glacier fills the trough to min(0.6·C·H(t), 0.9·R) above the floor,
                 flat-topped: never over the crest
     weakening   a pale lens under the upper wall, from a quarter of the way up to the crest,
                 of depth R·D/T_intact·6.75·s²(1 − s): thinning out smoothly downwards,
                 thickest two thirds of the way up, where the next slab comes off
+                and at most half the height above the floor (so the sound rock under it
+                still rises from the valley centre)
     datum       the floor, at a fixed level in the circle (−0.45·C): erosion shows as the
                 walls growing taller above the glacier
+    texture     bedding drawn faintly in the rock ("Rock texture", URL `texture`, its contrast;
+                0 hides it): 18 beds of uneven spacing and weight per period, folded (two
+                wavelengths, the long one asymmetric), cut by three short steep faults whose
+                throw dies out to their tips and sideways. Period 1.2 circle diameters, so no
+                repeat is in view. It moves up at the erosion rate: offset = erosion so far
+                (R(t) − R0 + the drops so far), the rock's uplift past the fixed floor; it
+                stands still while the glacier is gone. Drawn, not modelled (user direction,
+                2026-11-27)
 
 The failed part of the surface (x_cut to the crest) lingers as a thin line for 3 % of the
 record. "Cross-section" (URL `section=off`) hides it. Choices open to change: C, the parabola,
 the failure slope S, the ice depth factor 0.6 and its cap, the debris leaving the section, the
 flat ice surface, the floor as datum.
+
+`?t=<kyr from the start>` opens the figure paused at that time (to look at, or point at, one
+moment; the address bar then drops it).
+
+**Where the landslide rule and the floor come from** (`py/xsection_experiment.py`, 2026-11-27,
+at the user's suggestion to look at a 2D section before simplifying). There is no
+across-valley tier yet (d2_across is unbuilt), so this is an exploratory script, not a
+validated model: a half-section under uplift, a parabolic trough cut under the ice (asserted;
+a first try with erosion ∝ ice depth² cut a V-notch, and the real pattern needs Harbor's
+ice-flow solution), and Culmann wedge failures searched over toe and dip with the ice thrust
+on the wedge's face (c = 0.7–1.3 MPa, φ = 35°, 3 km half-spacing, the figure's two ice
+histories, with and without cohesion lost to damage). What it gave, in every run:
+- failures are wedges whose toe sits at the ice surface (toe minus ice level 0.00 of the
+  relief, area-weighted), on planes of 40–47°; the trough under the ice is never touched;
+- most do not reach the crest (6 of 18 with damage); the largest lower relief by 10–16 %;
+- relief never collapses, even with cohesion cut by 90 %: friction alone holds the slope.
+Taken into the figure: the wedge off the upper wall on a plane of fixed dip, the untouched
+trough, and the frictional floor. Not taken: the toe following the ice surface (the figure's
+toe is where the plane from the new crest meets the wall, since the crest drop is given by the
+graph), and the small size of the drops (the graph's are schematic, up to 0.5 T0).
 
 The first version (2026-11-27, earlier the same day) drew a landslide as the relief figure
 does, a straight line of equal area across the half-valley (cut = fill, debris kept), about
@@ -351,7 +387,7 @@ the mean elevation. Replaced at the user's direction: after a large drop that li
 very low angle (7° at the lowest relief), and the two damage lenses, pinching out at the
 valley centre, left a peak of dark rock under the middle of the glacier.
 
-Validation (`py/test_glacier_buttress.py`, 115 checks over 14 settings, three of them the
+Validation (`py/test_glacier_buttress.py`, 116 checks over 14 settings, three of them the
 retreating glacier): relief budget R0 + E·(time with ice) − Σdrops = R_end (8e-14); relief grows at exactly E with ice and not at all without; the threshold reconstructed as
 T0 + B·b − (fracture drops since the last failure) at every vertex (2e-16); each fracture
 after exactly its quota of ∫|d(B·b)| (8e-15), the quota within qMean·(1 ± qJit), and drops W·q; relief never above the threshold or
@@ -364,15 +400,20 @@ dt 0.01 … 0.00015625 with no weakening; the errors fall in steps, set by where
 land on the step grid, so the test asks for an order ≥ 0.5 over the 64-fold refinement; the
 four settings give 0.62–1.03). The retreating glacier: ice-free 127.5–125.5, 121.5–118.5 and 9–5 ka, the stade between, ice in
 the late Holocene, none at the end; no fracture while the ice is gone; the threshold there at
-most T0. The thick history's fingerprint is unchanged by the option. The cross-section, over 459
-landslides in 17 settings (the 14, and three extremes: retreating with weakening × 3, weakening
+most T0. The thick history's fingerprint is unchanged by the option. The cross-section, over the
+landslides of 17 settings (the 14, and three extremes: retreating with weakening × 3, weakening
 and erosion × 3, initial relief 0.2): every landslide keeps the floor and lowers the crest by
 exactly R − R′ (1e-15), only removes rock, and cuts one stretch, from where the plane meets the
-wall to the crest, leaving the failure plane or the floor; floor to crest equals R(t) at
-sampled times (9e-16) with the floor the datum; every slope is the failure slope or steeper, a
-flat floor, or the foot of the U; the surface rises from the valley centre to the crest, with
-no notch at the centre; carving only removes rock; the ice fills to min(0.6·C·H, 0.9·R), below
-the crest; the lens fraction is in [0, 1) and 0 without weakening. `GS.glacier.sectionFingerprint()` equals the Python line for three
+wall to the crest, leaving one plane at slope S or, if gentler, tangent to the trough; floor to
+crest equals R(t) at sampled times (9e-16) with the floor the datum; no benches or flat floor,
+and the slope into the crest never gentler than the last landslide left it; the surface rises
+from the valley centre to the crest, with no notch at the centre; carving only removes rock;
+the ice fills to min(0.6·C·H, 0.9·R), below the crest; the lens fraction is in [0, 1) and 0
+without weakening; the texture's offset rises at E with ice, not at all without, and equals
+E·(time with ice) at the end (1e-9). The convergence test's condition on the end relief was
+loosened with the frictional floor: its error must be smallest at the finest step, not fall at
+every step (retreating history: 1.2e-2 → 3.1e-2 → 2.9e-2 → 1.5e-5, an event order near the end
+that coarse steps get wrong). `GS.glacier.sectionFingerprint()` equals the Python line for three
 settings (2026-11-27). `GS.glacier.fingerprint()` equals the Python line for
 three settings (2026-11-27).
 

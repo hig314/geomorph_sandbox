@@ -73,7 +73,8 @@
     qMean: 0.025,  // mean change in buttressing between fractures (threshold units)
     qJit: 0.25,    // quota spread: q uniform in qMean·(1 ± qJit)
     R0: 1.3,       // above the mean relief and the ice-free threshold: a slope held up by the ice
-    floor: 0.165,  // 10 % of the graph height, 1.1·(T0 + B)
+    floor: 0.7,    // frictional floor: broken rock still stands at its friction angle, so no landslide
+                   // leaves less relief than this (py/xsection_experiment.py); was 0.165 until 2026-11-27
     dMin: 0.05, dMax: 0.5, dAlpha: 1,
     seed: 7
   };
@@ -200,18 +201,20 @@
   //               (the parabola as a polyline on SEC_N cells; the min is exact for polylines).
   //               The U climbs the wall as the floor goes down: the glacier oversteepens the wall
   //   landslide   R → R′: the crest comes down by R − R′ and the floor stays. The failure surface
-  //               is a plane from the new crest down at the fixed slope SEC_S, not below the floor:
-  //               z(x) = min(old(x), max(z_floor, z_crest′ − SEC_S·(1 − x)))  for x ≥ x_cut,
-  //               x_cut the highest point where the plane meets the old surface; old(x) below it
-  //               A slab off the upper wall, however large the drop: the wall is never gentler
-  //               than SEC_S, and a drop to R′ < SEC_S leaves a flat floor at the wall's foot. The
-  //               debris is not kept in the section (it lands on the glacier and is carried away)
+  //               is a plane from the new crest down to the wall, at the slope SEC_S or, where a
+  //               plane that steep would miss the wall, at the steepest slope that still meets it
+  //               (s_tan: the tangent from the new crest to the trough):
+  //               z(x) = min(old(x), z_crest′ − s·(1 − x))  for x ≥ x_cut,   s = min(SEC_S, s_tan),
+  //               x_cut the highest point where the plane meets the old surface; old(x) below it.
+  //               A wedge off the upper wall: the trough below x_cut is never touched, so the
+  //               floor stays a U. The debris is not kept in the section (it lands on the glacier
+  //               and is carried away)
   //   ice         the glacier fills the trough to min(SEC_ICE·C·H(t), SEC_CAP·R) above the floor,
   //               flat-topped: never over the crest
   //   weakening   damage D / T_intact, drawn as a lens under the upper wall (glacier_app.js)
   //   datum       the floor: drawn at −SEC_DATUM·C, so a full trough is about centred
   // Mirrored in py/glacier_buttress.py and checked there. Nothing here feeds back on R(t).
-  var SEC_N = 32, SEC_ICE = 0.6, SEC_CAP = 0.9, SEC_S = 1.0, SEC_DATUM = 0.45;
+  var SEC_N = 32, SEC_ICE = 0.6, SEC_CAP = 0.9, SEC_S = 1.2, SEC_DATUM = 0.45;
 
   function secArea(poly, xTo) {
     var a = 0, i, p0, p1, zc;
@@ -266,33 +269,34 @@
     if (rel[0][1] - zv <= EPS) return rel.map(function (v) { return v.slice(); });
     return secMin(rel, secTrough(zv, Math.max(C, R)));
   }
-  // max(zf, zc − SEC_S·(1 − x)) on [0, 1]: the failure plane from the crest, not below the floor
-  function secPlane(zc, zf) {
-    if (zc - SEC_S >= zf) return [[0, zc - SEC_S], [1, zc]];
-    return [[0, zf], [1 - (zc - zf) / SEC_S, zf], [1, zc]];
-  }
-  // {rel, xcut}: rock above the failure plane is removed from xcut to the crest, where xcut is
-  // the highest point at which the plane meets the old surface; below it the old surface is
-  // kept (the glacier's bed is not touched unless the plane reaches the floor).
+  // {rel, xcut, slope}: the wedge above a plane from the new crest (floor + Rn) is removed. The
+  // plane has slope min(SEC_S, s_tan), s_tan the steepest slope at which a line from the new
+  // crest still meets the old surface below it; xcut is the highest point where it does. Below
+  // xcut the old surface is kept.
   function secLandslide(cur, Rn) {
-    var zf = cur[0][1], nw = secMin(cur, secPlane(zf + Rn, zf)), i = nw.length - 1, xc, out = [], j;
+    var zf = cur[0][1], zc = zf + Rn, st = -Infinity, sl, nw, i, xc, out = [], j;
+    for (j = 0; j < cur.length; j++) if (cur[j][0] < 1 - 1e-9) st = Math.max(st, (zc - cur[j][1]) / (1 - cur[j][0]));
+    sl = Math.min(SEC_S, st);
+    nw = secMin(cur, [[0, zc - sl], [1, zc]]); i = nw.length - 2;
     while (i > 0 && nw[i][1] < secValue(cur, nw[i][0]) - 1e-12) i--;
     xc = nw[i][0];
     for (j = 0; j < cur.length; j++) if (cur[j][0] < xc - 1e-12) out.push(cur[j].slice());
-    return { rel: out.concat(nw.slice(i)), xcut: xc };
+    return { rel: out.concat(nw.slice(i)), xcut: xc, slope: sl };
   }
   function secC(p) { return p.T0 + p.B; }
-  // [{t, rel, pre}]: the relict surface from each landslide on; at t = 0 a crest at 0 with the
-  // failure slope below it, floor at −R0.
+  // [{t, rel, pre}]: the relict surface from each landslide on; at t = 0 a trough of relief R0
+  // under a crest at 0, with the failure slope from the crest down to it.
   function sectionStates(sim) {
-    var C = secC(sim.p), rel = secPlane(0, -sim.p.R0), out = [{ t: 0, rel: rel, pre: null, ghost: null }], i, f, cur, ls, g, j;
+    var C = secC(sim.p), R0 = sim.path[0][1], i, f, cur, ls, g, j;
+    var rel = secLandslide(secMin([[0, 0], [1, 0]], secTrough(-R0, Math.max(C, R0))), R0).rel;
+    var out = [{ t: 0, rel: rel, pre: null, ghost: null }];
     for (i = 0; i < sim.fails.length; i++) {
       f = sim.fails[i];
       if (f.from - f.to <= EPS) continue;
       cur = secSurface(rel, f.from, C); ls = secLandslide(cur, f.to); rel = ls.rel;
       g = [[ls.xcut, secValue(cur, ls.xcut)]];             // ghost: the part of the old surface that failed
       for (j = 0; j < cur.length; j++) if (cur[j][0] > ls.xcut + 1e-12) g.push(cur[j].slice());
-      out.push({ t: f.t, rel: rel, pre: cur, xcut: ls.xcut, ghost: g });
+      out.push({ t: f.t, rel: rel, pre: cur, xcut: ls.xcut, slope: ls.slope, ghost: g });
     }
     return out;
   }
@@ -310,7 +314,10 @@
     ba = p.B * butt(ice[i][1], p); bb = p.B * butt(ice[i + 1][1], p);
     Ti = p.T0 + ba + (bb - ba) * (t - ice[i][0]) / (ice[i + 1][0] - ice[i][0]);
     H = valueAt(ice, t);
-    return { pts: pts, R: R, ghost: st.ghost ? st.ghost.map(shift) : null, age: t - st.t,
+    // rock uplift relative to the floor so far = glacial erosion so far (the texture's offset)
+    var up = R - sim.path[0][1], j;
+    for (j = 0; j < sim.fails.length && sim.fails[j].t <= t; j++) up += sim.fails[j].from - sim.fails[j].to;
+    return { up: up, pts: pts, R: R, ghost: st.ghost ? st.ghost.map(shift) : null, age: t - st.t,
              weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + Math.min(SEC_ICE * C * H, SEC_CAP * R) };
   }
   // Same line as py/glacier_buttress.py section_fingerprint() prints.

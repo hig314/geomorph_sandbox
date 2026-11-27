@@ -1,3 +1,4 @@
+import math
 """
 test_glacier_buttress.py — the glacier buttressing slide (relief_limit/glacier_model.js mirror).
 Run: /opt/anaconda3/bin/python3 py/test_glacier_buttress.py
@@ -166,10 +167,12 @@ for c in [{}, {"W": 0}, {"E": 2}, {"ice": "retreat"}]:
         ts, Rend = stepped(c, dt)
         errs.append((len(ts) == len(tf), max([abs(a - b) for a, b in zip(ts, tf)] + [0]), abs(Rend - ex["path"][-1][1])))
     # first order, in steps (each error is set by where single events fall on the step grid):
-    # failure-time errors fall at every refinement, R_end errors never rise, and both at an
-    # order ≥ 0.5 over the 64-fold refinement (≥ 8×; the four settings give 0.6-1.0)
+    # failure-time errors fall at every refinement; the R_end error is smallest at the finest
+    # step (it can rise in between: with the frictional floor, 2026-11-27, the retreating
+    # history's last landslide is pinned to the floor or not according to an event order that
+    # coarse steps get wrong); both at an order ≥ 0.5 over the 64-fold refinement (≥ 8×)
     ok = all(e[0] for e in errs) and all(b[1] < a[1] for a, b in zip(errs, errs[1:])) and \
-        all(b[2] <= a[2] * (1 + 1e-9) for a, b in zip(errs, errs[1:])) and \
+        all(errs[-1][2] <= a[2] * (1 + 1e-9) for a in errs) and \
         errs[-1][1] <= errs[0][1] / 8 and errs[-1][2] <= errs[0][2] / 8
     check("time-stepped reference converges to the exact solution %s" % c, ok,
           "same failure count; worst time error " + " → ".join("%.2g" % e[1] for e in errs) + " kyr, R_end error " +
@@ -178,6 +181,9 @@ for c in [{}, {"W": 0}, {"E": 2}, {"ice": "retreat"}]:
 
 # ---- the cross-section (glacial trough) -------------------------------------------------
 S = gb.SEC_S
+def tan_slope(R, C):
+    """slope of the tangent from a crest R above the floor to the full trough (the polyline one, as drawn)"""
+    return max((R - v[1]) / (1 - v[0]) for v in gb.sec_trough(0.0, max(C, R))[:-1])
 wr = wd = wc = 0.0; ok_mono = ok_rm = ok_scarp = ok_steep = ok_ice = ok_lens = ok_trough = ok_bed = ok_cut = True; nls = 0; removed = 0.0
 for c in SETS + [{"ice": "retreat", "W": 3}, {"W": 3, "E": 3}, {"R0": 0.2}]:
     s = gb.simulate(c); states = gb.section_states(s); C = gb.sec_C(s["p"])
@@ -194,18 +200,19 @@ for c in SETS + [{"ice": "retreat", "W": 3}, {"W": 3, "E": 3}, {"R0": 0.2}]:
         xc = states[k]["xcut"]
         ok_cut = ok_cut and all((gb.sec_value(rel, x) < gb.sec_value(pre, x) - 1e-12) == (x > xc + 1e-12) or abs(gb.sec_value(rel, x) - gb.sec_value(pre, x)) < 1e-12 and x > xc for x in xs) \
             and states[k]["ghost"][0][0] == xc and states[k]["ghost"][-1] == pre[-1]
-        ok_scarp = ok_scarp and all(abs(gb.sec_value(rel, x) - max(zf, zc - S * (1 - x))) < 1e-12
-                                    for x in xs if gb.sec_value(rel, x) < gb.sec_value(pre, x) - 1e-12)
+        sl = states[k]["slope"]; Rn = zc - zf
+        ok_scarp = ok_scarp and all(abs(gb.sec_value(rel, x) - (zc - sl * (1 - x))) < 1e-12
+                                    for x in xs if gb.sec_value(rel, x) < gb.sec_value(pre, x) - 1e-12) \
+            and sl <= S + 1e-12 and sl >= min(S, tan_slope(Rn, C)) - 1e-9 \
+            and (abs(sl - S) < 1e-12 or all(gb.sec_value(pre, x) >= zc - sl * (1 - x) - 1e-12 for x in xs))   # gentler only as the tangent
     for t in [0.0, 3.7, 29.9, 64.2, 78.0, 90.0, 101.9, 123.4, 150.05, 171.3, 188.8, 199.9, 200.0]:
         sec = gb.section_at(s, states, t); p = sec["pts"]; zf, zc = p[0][1], p[-1][1]
         wr = max(wr, abs(zc - zf - sec["R"])); wd = max(wd, abs(zf + gb.SEC_DATUM * C))                            # relief = R(t); datum = floor
         ok_mono = ok_mono and all(b[0] > a[0] and b[1] >= a[1] - 1e-12 for a, b in zip(p, p[1:])) and p[0][0] == 0 and p[-1][0] == 1
-        # every slope is the failure slope or steeper, a flat floor, or the foot of the glacier's U
-        tr = gb.sec_trough(zf, max(C, sec["R"]))
-        for a, b in zip(p, p[1:]):
-            sl = (b[1] - a[1]) / (b[0] - a[0])
-            if 1e-9 < sl < S - 1e-9:
-                ok_steep = ok_steep and abs(a[1] - gb.sec_value(tr, a[0])) < 1e-12 and abs(b[1] - gb.sec_value(tr, b[0])) < 1e-12
+        # no benches (every slope > 0), and the slope into the crest is at least the one the last landslide left
+        kk = max(j for j in range(len(states)) if states[j]["t"] <= t); Rk = states[kk]["rel"][-1][1] - states[kk]["rel"][0][1]
+        ok_steep = ok_steep and all(b[1] > a[1] for a, b in zip(p, p[1:])) \
+            and (p[-1][1] - p[-2][1]) / (p[-1][0] - p[-2][0]) >= min(S, tan_slope(Rk, C)) - 1e-9
         # the glacier's bed is smooth at the valley centre (no notch): flat, or the U's first chord
         ok_bed = ok_bed and (p[1][1] - p[0][1]) / p[1][0] <= C / gb.SEC_N + 1e-9
         # carving only removes rock: the surface is never above the one the last landslide left
@@ -218,14 +225,24 @@ check("section: floor-to-crest height = R(t) before and after every landslide an
 check("section: the floor is the datum (drawn at -0.45·C)", wd < 1e-12, "worst %.1e" % wd)
 check("section: a landslide keeps the floor and lowers the crest by exactly R - R'", wc < 1e-9, "%d landslides, worst %.1e" % (nls, wc))
 check("section: a landslide only removes rock", ok_rm and removed > 0, "area removed in all, %.3f" % removed)
-check("section: where a landslide removed rock, the surface is the failure plane (slope S) or the floor", ok_scarp)
+check("section: where a landslide removed rock, the surface is one plane to the crest, at slope S or, if gentler, tangent to the trough", ok_scarp)
 check("section: a landslide cuts one stretch, from where the plane meets the wall to the crest; the bed below is kept", ok_cut)
-check("section: every slope is the failure slope or steeper, a flat floor, or the foot of the U", ok_steep)
+check("section: no benches or flat floor, and the slope into the crest is never gentler than the last landslide left it", ok_steep)
 check("section: surface rises from the valley centre to the crest", ok_mono)
-check("section: the bed at the valley centre is flat or the U (no notch)", ok_bed)
+check("section: the bed at the valley centre is the U (no notch)", ok_bed)
 check("section: carving only removes rock (never above the surface the last landslide left)", ok_trough)
 check("section: ice to min(0.6·C·H, 0.9·R) above the floor, below the crest; none when the glacier is gone", ok_ice)
 check("section: damage lens 0 ≤ D/T_intact < 1, and 0 with no weakening", ok_lens)
+# the rock texture's offset: uplift relative to the floor = erosion so far
+ok_up = True; wu = 0.0
+for c in SETS:
+    s = gb.simulate(c); states = gb.section_states(s); E = s["p"]["E"] * s["p"]["Eref"]; prev = 0.0
+    for k in range(0, 801):
+        t = 0.25 * k; u = gb.section_at(s, states, t)["up"]
+        ok_up = ok_up and -1e-12 <= u - prev <= E * 0.25 + 1e-9 and (k == 0 or erosion_on(s["ice"], t - 0.125) or abs(u - prev) < 1e-12)
+        prev = u
+    wu = max(wu, abs(prev - E * ice_time(s["ice"])))
+check("section: the rock rises past the floor at E with ice, not at all without, and never falls (texture offset = erosion so far)", ok_up and wu < 1e-9, "worst %.1e" % wu)
 print("section fingerprint (GS.glacier.sectionFingerprint() in the browser):")
 for c in [{}, {"ice": "retreat"}, {"ice": "retreat", "W": 0, "E": 0.25}]:
     print("  ", c, gb.section_fingerprint(c))
