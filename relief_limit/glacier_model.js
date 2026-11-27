@@ -1,0 +1,186 @@
+/*
+ * relief_limit/glacier_model.js — "Glacier buttressing": relief against a threshold that a
+ * glacier both buttresses and weakens, over two glacial cycles (the last 200 kyr). Pure
+ * model, no DOM. A stand-alone slide beside the seven-step figure of model.js.
+ *
+ * Time t in kyr from 200 ka (t = 0) to the present (t = 200). Relief and threshold in units
+ * of the intact threshold with no ice, T0 = 1. Ice thickness H in units of the largest
+ * glacial thickness.
+ *
+ *   ice         H(t) = max(Hmin, envelope(t) + fluctuation(t)), a polyline on a dtH grid.
+ *               envelope: glacial (MIS 6) – interglacial (MIS 5e) – glacial (to the LGM) –
+ *               interglacial (Holocene), piecewise linear through ICE_KEYS; never zero, so
+ *               ice is present throughout. fluctuation: internal dynamics, seeded, knots every
+ *               1.5–4 kyr with Gaussian values σ·(0.4 + 0.6·envelope), cosine-interpolated
+ *   threshold   T(t) = T0 − Dmg + B·b(t)
+ *               buttressing  b = (1 − e^(−H/Hs)) / (1 − e^(−1/Hs)), Hs = 0.3, B fixed, at the
+ *                            nodes of the ice polyline, linear between them: saturating, so the
+ *                            response is stretched for thin ice and compressed for thick ice
+ *               weakening    the stress change is the change in buttressing |d(B·b)|; it
+ *                            accumulates from the last fracture, and when it reaches a quota
+ *                            q = qMean·(1 + qJit·(2u − 1)) (u uniform, its own stream) the rock
+ *                            fractures: Dmg += W·q, a step down in T
+ *               a landslide removes the damaged rock: Dmg ← 0
+ *   relief      dR/dt = E (glacial erosion, constant: ice is present the whole time)
+ *   failure     where R reaches T (erosion, or T falling as the ice thins) or a fracture steps
+ *               T to or below R:  R ← max(T − d, floor), then Dmg ← 0; d from a truncated
+ *               power law on [dMin, dMax] (its own stream, as model.js)
+ *
+ * H and b are linear on each grid cell, so T and R are linear between events and every event time
+ * is exact. Mirrored in py/glacier_buttress.py; validated in py/test_glacier_buttress.py
+ * (budget, threshold reconstruction, fracture quotas against ∫|d(B·b)|, failure rule, floor,
+ * W = 0 and E = 0 limits, a converging time-stepped reference, fingerprints).
+ */
+(function (root) {
+  "use strict";
+  var GS = (root.GS = root.GS || {});
+  var EPS = 1e-9;
+
+  // [age ka, envelope]: build-up to MIS 6, termination II, the last interglacial, the stepped
+  // build-up of the last glacial to the LGM, termination I, the Holocene, and climate change:
+  // the ice plunges in the last 600 years. A thick glacier: interglacials keep about 40 % of
+  // the glacial maximum, so the plunge takes it lower than any interglacial.
+  var ICE_KEYS = [[200, 0.65], [186, 0.73], [176, 0.69], [160, 0.80], [148, 0.86], [140, 0.97],
+                  [135, 0.93], [129, 0.41], [117, 0.38], [110, 0.57], [103, 0.50], [92, 0.64],
+                  [85, 0.57], [70, 0.73], [60, 0.79], [50, 0.71], [35, 0.76], [24, 1.00],
+                  [19, 0.94], [11, 0.40], [0.6, 0.38], [0, 0.04]];
+
+  var DEFAULTS = {
+    tmax: 200,     // kyr
+    dtH: 0.25,     // kyr, the ice polyline's grid
+    T0: 1,         // intact threshold with no ice
+    B: 0.5,        // buttressing at the largest thickness (fixed)
+    Hs: 0.3,       // saturation thickness of buttressing: stretched for thin ice, compressed for thick
+    Hmin: 0.05,    // thinnest ice
+    sigma: 0.09,   // amplitude of the internal fluctuations
+    E: 1,          // erosion, as a multiple of Eref
+    Eref: 0.012,   // relief per kyr at E = 1
+    W: 1,          // weakening: drop of T per unit change in buttressing at a fracture
+    qMean: 0.025,  // mean change in buttressing between fractures (threshold units)
+    qJit: 0.25,    // quota spread: q uniform in qMean·(1 ± qJit)
+    R0: 1.3,       // above the mean relief and the ice-free threshold: a slope held up by the ice
+    floor: 0.165,  // 10 % of the graph height, 1.1·(T0 + B)
+    dMin: 0.05, dMax: 0.5, dAlpha: 1,
+    seed: 7
+  };
+
+  function gauss(rnd) {
+    var u = 1 - rnd(), v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function envelope(t, tmax) {
+    var a = tmax - t, i, a0, a1;
+    for (i = 0; i + 1 < ICE_KEYS.length; i++) {
+      a0 = ICE_KEYS[i][0]; a1 = ICE_KEYS[i + 1][0];
+      if (a <= a0 && a >= a1) return ICE_KEYS[i][1] + (ICE_KEYS[i + 1][1] - ICE_KEYS[i][1]) * (a0 - a) / (a0 - a1);
+    }
+    return a < ICE_KEYS[ICE_KEYS.length - 1][0] ? ICE_KEYS[ICE_KEYS.length - 1][1] : ICE_KEYS[0][1];
+  }
+
+  function makeIce(p) {
+    var rnd = GS.noise.mulberry32(p.seed | 0), tmax = p.tmax, kt = [-2 * rnd()], kv = [], i, j = 0, n, t, s, w, env, fl, out = [];
+    while (kt[kt.length - 1] <= tmax) kt.push(kt[kt.length - 1] + 1.5 + 2.5 * rnd());
+    for (i = 0; i < kt.length; i++) kv.push(gauss(rnd));
+    n = Math.round(tmax / p.dtH);
+    for (i = 0; i <= n; i++) {
+      t = tmax * i / n;
+      while (j + 2 < kt.length && kt[j + 1] <= t) j++;
+      s = (t - kt[j]) / (kt[j + 1] - kt[j]); w = 0.5 - 0.5 * Math.cos(Math.PI * s);
+      env = envelope(t, tmax);
+      fl = p.sigma * (0.4 + 0.6 * env) * (kv[j] + (kv[j + 1] - kv[j]) * w);
+      out.push([t, Math.max(p.Hmin, env + fl)]);
+    }
+    return out;
+  }
+
+  function makeSizes(p) {
+    var lo = Math.min(p.dMin, p.dMax), hi = Math.max(p.dMin, p.dMax), a = p.dAlpha;
+    if (hi <= lo * (1 + 1e-9) || a <= 0) return function () { return lo; };
+    var rnd = GS.noise.mulberry32((p.seed | 0) + 1000003), span = 1 - Math.pow(lo / hi, a);
+    return function () { return lo * Math.pow(1 - rnd() * span, -1 / a); };
+  }
+
+  function makeQuotas(p) {
+    var rnd = GS.noise.mulberry32((p.seed | 0) + 2000003), qm = p.qMean, j = p.qJit;
+    return function () { return qm * (1 + j * (2 * rnd() - 1)); };
+  }
+
+  // buttressing per unit B: saturating in H, 0 at H = 0 and 1 at the largest thickness
+  function butt(H, p) { return (1 - Math.exp(-H / p.Hs)) / (1 - Math.exp(-1 / p.Hs)); }
+
+  function simulate(params) {
+    var p = Object.assign({}, DEFAULTS, params || {});
+    var ice = makeIce(p), nextD = makeSizes(p), nextQ = makeQuotas(p);
+    var E = p.E * p.Eref, B = p.B, T0 = p.T0, W = p.W, floor = Math.max(p.floor, 0);
+    var Dmg = 0, acc = 0, q = nextQ(), t = 0, H = ice[0][1], Bt = B * butt(H, p), Bt1, sb;
+    var R = Math.min(p.R0, T0 + Bt);
+    var path = [[t, R]], thr = [[t, T0 + Bt]], fracs = [], fails = [];
+    var i, t1, H1, s, gap, closing, tf, tq, tn, dt, Told;
+
+    function fail(cause) {
+      var T = T0 - Dmg + Bt, d = nextD(), Rn = Math.max(T - d, floor);
+      if (Rn < R) {
+        fails.push({ t: t, from: R, to: Rn, d: d, lim: T, dmg: Dmg, cause: cause });
+        R = Rn; path.push([t, R]);
+      }
+      if (Dmg > 0) { thr.push([t, T]); Dmg = 0; thr.push([t, T0 + Bt]); } // the landslide removes the damaged rock
+    }
+
+    for (i = 0; i + 1 < ice.length; i++) {
+      t1 = ice[i + 1][0]; H1 = ice[i + 1][1];
+      s = t1 > t ? (H1 - H) / (t1 - t) : 0;       // dH/dt on this cell
+      Bt1 = B * butt(H1, p);
+      sb = t1 > t ? (Bt1 - Bt) / (t1 - t) : 0;   // d(buttressing)/dt on this cell
+      for (;;) {
+        gap = T0 - Dmg + Bt - R;                // ≥ 0
+        closing = E - sb;                          // d(R − T)/dt
+        tf = closing > 0 ? t + gap / closing : Infinity;
+        tq = sb !== 0 ? t + (q - acc) / Math.abs(sb) : Infinity;
+        tn = Math.min(tf, tq, t1);
+        if (tn >= t1 - EPS && tf > t1 - EPS && tq > t1 - EPS) {
+          acc += Math.abs(sb) * (t1 - t); R += E * (t1 - t); t = t1; H = H1; Bt = Bt1;
+          R = Math.min(R, T0 - Dmg + Bt);
+          break;
+        }
+        dt = tn - t;
+        acc += Math.abs(sb) * dt; R += E * dt; H += s * dt; Bt += sb * dt; t = tn;
+        path.push([t, R]); thr.push([t, T0 - Dmg + Bt]);
+        if (tq <= tf) {                            // fracture
+          Told = T0 - Dmg + Bt;
+          Dmg += W * q; acc = 0;
+          fracs.push({ t: t, drop: W * q, q: q, from: Told, to: Told - W * q });
+          q = nextQ();
+          thr.push([t, T0 - Dmg + Bt]);
+          if (R >= T0 - Dmg + Bt - EPS) fail("fracture");
+        } else {
+          R = T0 - Dmg + Bt;
+          fail("limit");
+        }
+      }
+      path.push([t, R]); thr.push([t, T0 - Dmg + Bt]);
+    }
+    return { path: path, thr: thr, ice: ice, fracs: fracs, fails: fails, p: p };
+  }
+
+  // Value at t on a time-ordered polyline (after any step at exactly t).
+  function valueAt(poly, t) {
+    var lo = 0, hi = poly.length - 1, mid, a, b;
+    while (lo < hi) { mid = (lo + hi + 1) >> 1; if (poly[mid][0] <= t) lo = mid; else hi = mid - 1; }
+    if (lo === poly.length - 1) return poly[lo][1];
+    a = poly[lo]; b = poly[lo + 1];
+    return b[0] === a[0] ? a[1] : a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+  }
+
+  // Same line as py/glacier_buttress.py fingerprint() prints.
+  function fingerprint(extra) {
+    var s = simulate(extra), sp = 0, st = 0, si = 0, i;
+    for (i = 0; i < s.path.length; i++) sp += s.path[i][1];
+    for (i = 0; i < s.thr.length; i++) st += s.thr[i][1];
+    for (i = 0; i < s.ice.length; i++) si += s.ice[i][1];
+    return s.path.length + " " + s.thr.length + " " + s.fracs.length + " " + s.fails.length + " " +
+      sp.toFixed(9) + " " + st.toFixed(9) + " " + si.toFixed(9);
+  }
+
+  GS.glacier = { DEFAULTS: DEFAULTS, ICE_KEYS: ICE_KEYS, butt: butt, simulate: simulate, makeIce: makeIce, valueAt: valueAt, fingerprint: fingerprint };
+})(typeof window !== "undefined" ? window : this);

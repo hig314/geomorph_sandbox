@@ -254,6 +254,19 @@ The concept is where the user wants it. What the figure has:
 - in the cross-section: weakening is drawn but does not change the gradient the slope
   steepens to; steps 3 and 4 share R(t) but not the section
 
+### Glacier buttressing (`relief_limit/glacier.html`, 2026-11-26)
+
+A stand-alone slide beside the seven steps: relief against a threshold over the last 200 kyr
+under a dynamic glacier through two glacial cycles, ice thickness in a thin panel below.
+Buttressing raises the threshold on a saturating curve of ice thickness, fixed (stretched for
+thin ice, compressed for thick); each change in buttressing fractures the rock in small,
+regular steps (Weakening slider); glacial erosion raises relief at a constant rate (Erosion
+rate slider). Fracture steps drawn solid, black and thick (2026-11-27); the ice is thick
+(interglacials keep ~40 %) and plunges in the last 600 years (climate change). Starts at relief 1.3 T0, held up by the ice; at erosion × 0.25 and no weakening
+relief builds through the glacials. Exact event model, Python mirror and 80
+checks; rules and choices in `docs/relief_limit.md`. Wanted in the deck at slide 42; not
+yet placed there (2026-11-26).
+
 ### The deck
 
 The figure is presented from a deck on landslidescience.org (slide 37 of
