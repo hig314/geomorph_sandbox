@@ -231,8 +231,8 @@ for c in SETS + [{"ice": "retreat", "W": 3}, {"W": 3, "E": 3}, {"R0": 0.2}]:
         # carving only removes rock: the surface is never above the one the last landslide left
         kk = max(j for j in range(len(states)) if states[j]["t"] <= t); cur = gb.sec_surface(states[kk]["rel"], sec["R"], C)
         ok_trough = ok_trough and all(v[1] <= gb.sec_value(states[kk]["rel"], v[0]) + 1e-12 for v in cur)
-        ok_ice = ok_ice and abs(sec["zIce"] - zf - min(gb.SEC_ICE * C * sec["H"], gb.SEC_CAP * sec["R"])) < 1e-12 \
-            and (sec["H"] > 0 or sec["zIce"] == zf) and sec["zIce"] < zc
+        ok_ice = ok_ice and abs(sec["zIce"] - zf - gb.SEC_ICE * C * sec["H"]) < 1e-12 \
+            and (sec["H"] > 0 or sec["zIce"] == zf)
         ok_lens = ok_lens and 0 <= sec["weak"] < 1 and (c.get("W", 1) != 0 or sec["weak"] < 1e-12)
 check("section: floor-to-crest height = R(t) before and after every landslide and at sampled times", wr < 1e-9, "worst %.1e" % wr)
 check("section: the floor is the datum (drawn at -0.45·C)", wd < 1e-12, "worst %.1e" % wd)
@@ -244,7 +244,7 @@ check("section: no benches or flat floor, and the slope into the crest is never 
 check("section: surface rises from the valley centre to the crest", ok_mono)
 check("section: the bed at the valley centre is the U (no notch)", ok_bed)
 check("section: carving only removes rock (never above the surface the last landslide left)", ok_trough)
-check("section: ice to min(0.6·C·H, 0.9·R) above the floor, below the crest; none when the glacier is gone", ok_ice)
+check("section: ice to C·H above the floor (over the crest where thicker than the relief); none when the glacier is gone", ok_ice)
 check("section: damage lens 0 ≤ D/T_intact < 1, and 0 with no weakening", ok_lens)
 # the rock texture's offset: uplift relative to the floor = erosion so far
 ok_up = True; wu = 0.0

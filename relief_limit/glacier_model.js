@@ -216,12 +216,12 @@
   //               A wedge off the upper wall: the trough below x_cut is never touched, so the
   //               floor stays a U. The debris is not kept in the section (it lands on the glacier
   //               and is carried away)
-  //   ice         the glacier fills the trough to min(SEC_ICE·C·H(t), SEC_CAP·R) above the floor,
+  //   ice         the glacier fills the trough to SEC_ICE·C·H(t) above the floor (over the crests when thicker than the relief),
   //               flat-topped: never over the crest
   //   weakening   damage D / T_intact, drawn as a lens under the upper wall (glacier_app.js)
   //   datum       the floor: drawn at −SEC_DATUM·C, so a full trough is about centred
   // Mirrored in py/glacier_buttress.py and checked there. Nothing here feeds back on R(t).
-  var SEC_N = 32, SEC_ICE = 0.6, SEC_CAP = 0.9, SEC_S = 1.2, SEC_DATUM = 0.45;
+  var SEC_N = 32, SEC_ICE = 1.0, SEC_S = 1.5, SEC_DATUM = 0.45;
 
   function secArea(poly, xTo) {
     var a = 0, i, p0, p1, zc;
@@ -325,7 +325,7 @@
     var up = R - sim.path[0][1], j;
     for (j = 0; j < sim.fails.length && sim.fails[j].t <= t; j++) up += sim.fails[j].from - sim.fails[j].to;
     return { up: up, pts: pts, R: R, ghost: st.ghost ? st.ghost.map(shift) : null, age: t - st.t,
-             weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + Math.min(SEC_ICE * C * H, SEC_CAP * R) };
+             weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + SEC_ICE * C * H };
   }
   // Same line as py/glacier_buttress.py section_fingerprint() prints.
   function sectionFingerprint(extra) {

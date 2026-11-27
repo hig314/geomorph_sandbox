@@ -206,16 +206,15 @@ def simulate(params=None):
 #               A wedge off the upper wall: the trough below x_cut is never touched, so the
 #               floor stays a U. The debris is not kept in the section (it lands on the glacier
 #               and is carried away)
-#   ice         the glacier fills the trough to min(SEC_ICE*C*H(t), SEC_CAP*R) above the floor,
+#   ice         the glacier fills the trough to SEC_ICE*C*H(t) above the floor (over the crests when thicker than the relief),
 #               flat-topped: never over the crest
 #   weakening   a lens under the upper wall (glacier_app.js), depth (D / T_intact)*R*6.75*s^2*(1 - s)
 #   datum       the floor: drawn at -SEC_DATUM*C, so a full trough is about centred
 # Nothing here feeds back on R(t).
 SEC_N = 32
-SEC_ICE = 0.6
-SEC_CAP = 0.9   # the ice never fills more than this fraction of the relief
+SEC_ICE = 1.0   # ice level above the floor per unit H, in units of C: the thickest ice reaches the highest crest
 SEC_DATUM = 0.45  # the floor is drawn at -SEC_DATUM*C
-SEC_S = 1.2     # slope of a landslide's failure surface (dz/dx in section units; 43 deg as drawn)
+SEC_S = 1.5     # slope of a landslide's failure surface (dz/dx in section units; 56 deg as drawn)
 
 def value_at(poly, t):
     """value on a time-ordered polyline at t, after any step at exactly t (as glacier_model.js)"""
@@ -315,7 +314,7 @@ def section_at(sim, states, t):
     up = R - sim["path"][0][1] + sum(f["frm"] - f["to"] for f in sim["fails"] if f["t"] <= t)
     return dict(up=up, pts=pts, R=R, ghost=[[v[0], v[1] - m] for v in st["ghost"]] if st["ghost"] else None,
                 age=t - st["t"], weak=max(0.0, (Ti - value_at(sim["thr"], t)) / Ti),
-                H=H, zIce=pts[0][1] + min(SEC_ICE * C * H, SEC_CAP * R))
+                H=H, zIce=pts[0][1] + SEC_ICE * C * H)
 
 def section_fingerprint(extra=None):
     s = simulate(extra); states = section_states(s); out = "%d" % (len(states) - 1)

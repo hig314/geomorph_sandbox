@@ -351,15 +351,15 @@ by landslides from the crest down:
     landslide   R → R′: the crest comes down by R − R′, the floor stays. A wedge off the upper
                 wall: the failure surface is a plane from the new crest down to the wall,
                 z(x) = min( z(x), z_crest′ − s·(1 − x) )  for x ≥ x_cut,  s = min(S, s_tan),
-                S = 1.2 (43° as drawn), s_tan the steepest slope at which a line from the new
+                S = 1.5 (56° as drawn; 1.2 and 43° before 2026-11-27, and the valley drawn narrower, half-spacing 0.62 radii for 0.8, both for steeper walls), s_tan the steepest slope at which a line from the new
                 crest still meets the old surface (the tangent to the trough), x_cut the
                 highest point where the plane meets the old surface. Below x_cut nothing
                 changes, so the floor is always a U. s < S only after a very large drop (R′
-                below about 0.96); at the frictional floor, R′ = 0.7, s = 0.81 (31° as drawn),
+                below about 0.96); at the frictional floor, R′ = 0.7, s = 0.81 (39° as drawn),
                 the gentlest slope the section can show. The debris is not kept in the
                 section: it lands on the glacier and is carried away.
-    ice         the glacier fills the trough to min(0.6·C·H(t), 0.9·R) above the floor,
-                flat-topped: never over the crest
+    ice         the glacier fills the trough to C·H(t) above the floor, so the thickest ice stands as high as the highest crest and covers the crests wherever it is thicker than the relief (before 2026-11-27: min(0.6·C·H, 0.9·R), kept below the crest);
+                flat-topped
     weakening   a pale lens under the upper wall, from a quarter of the way up to the crest,
                 of depth R·D/T_intact·6.75·s²(1 − s): thinning out smoothly downwards,
                 thickest two thirds of the way up, where the next slab comes off
@@ -381,7 +381,7 @@ record. "Cross-section" (URL `section=off`) hides it. Choices open to change: C,
 the failure slope S, the ice depth factor 0.6 and its cap, the debris leaving the section, the
 flat ice surface, the floor as datum.
 
-`?t=<kyr from the start>` opens the figure paused at that time (to look at, or point at, one
+"Play slow" (key S, 2026-11-27) plays the record in 5 × the drawing time; Play and Replay return to normal speed. `?t=<kyr from the start>` opens the figure paused at that time (to look at, or point at, one
 moment; the address bar then drops it).
 
 **Where the landslide rule and the floor come from** (`py/xsection_experiment.py`, 2026-11-27,
@@ -428,7 +428,7 @@ wall to the crest, leaving one plane at slope S or, if gentler, tangent to the t
 crest equals R(t) at sampled times (9e-16) with the floor the datum; no benches or flat floor,
 and the slope into the crest never gentler than the last landslide left it; the surface rises
 from the valley centre to the crest, with no notch at the centre; carving only removes rock;
-the ice fills to min(0.6·C·H, 0.9·R), below the crest; the lens fraction is in [0, 1) and 0
+the ice fills to C·H above the floor; the lens fraction is in [0, 1) and 0
 without weakening; the texture's offset rises at E with ice, not at all without, and equals
 E·(time with ice) at the end (1e-9). The convergence test's condition on the end relief was
 loosened with the frictional floor: its error must be smallest at the finest step, not fall at
