@@ -180,6 +180,136 @@ def simulate(params=None):
     return dict(path=path, thr=thr, ice=ice, fracs=fracs, fails=fails, p=p)
 
 
+# ---- The cross-section: a glacial trough read from the same history -------------------------
+# A half-section z(x), valley centre at x = 0, ridge at x = 1 (x in units of the half-spacing,
+# z in units of T0), mirrored about the centre and the ridge when drawn. As the relief figure's
+# ridge-valley section (relief_limit.py), with the limiting slope a U, not a straight line:
+#   incision    the glacier cuts the floor down and a parabolic trough z_valley + C*x^2 (C the
+#               highest threshold, T0 + B: a full trough stands at it) climbs from it; above
+#               where it meets the older surface, that surface is untouched:
+#               z(x) = min(relict(x), z_valley + C*x^2),  z_valley = z_ridge - R(t)
+#               (the parabola as a polyline on SEC_N cells; the min is exact for polylines)
+#   landslide   R -> R': the surface becomes a straight line of equal area (cut = fill), valley
+#               centre to ridge. If that line would stand above the old ridge, the ridge stays,
+#               the floor rises by R - R', and the line ends at the point x2 of the old surface
+#               where cut = fill. If it would pass below the old floor (a small failure on a U,
+#               whose floor is low and wide), the floor stays, the ridge comes down by R - R',
+#               and the line starts at the point x1 of the old wall where cut = fill: the debris
+#               stops on the wall
+#   ice         the glacier fills the trough to SEC_ICE*C*H(t) above the floor, flat-topped
+#   weakening   a lens under the wall, depth (D / T_intact)*R*4s(1 - s), s = x / x_top
+#   datum       drawn about the mean elevation of the section, which a landslide conserves
+# Nothing here feeds back on R(t).
+SEC_N = 32
+SEC_ICE = 0.6
+
+def value_at(poly, t):
+    """value on a time-ordered polyline at t, after any step at exactly t (as glacier_model.js)"""
+    lo, hi = 0, len(poly) - 1
+    while lo < hi:
+        mid = (lo + hi + 1) >> 1
+        if poly[mid][0] <= t: lo = mid
+        else: hi = mid - 1
+    if lo == len(poly) - 1: return poly[lo][1]
+    a, b = poly[lo], poly[lo + 1]
+    return a[1] if b[0] == a[0] else a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0])
+
+def sec_area(poly, x_to=1.0):
+    a = 0.0
+    for p0, p1 in zip(poly, poly[1:]):
+        if x_to <= p0[0]: break
+        if x_to < p1[0]:
+            zc = p0[1] + (p1[1] - p0[1]) * (x_to - p0[0]) / (p1[0] - p0[0])
+            return a + 0.5 * (p0[1] + zc) * (x_to - p0[0])
+        a += 0.5 * (p0[1] + p1[1]) * (p1[0] - p0[0])
+    return a
+
+def sec_value(poly, x):
+    for p0, p1 in zip(poly, poly[1:]):
+        if x <= p1[0]:
+            return p0[1] if p1[0] == p0[0] else p0[1] + (p1[1] - p0[1]) * (x - p0[0]) / (p1[0] - p0[0])
+    return poly[-1][1]
+
+def sec_min(a, b):
+    """pointwise minimum of two polylines on [0, 1], crossings inserted (exact)"""
+    xs = sorted(set([v[0] for v in a] + [v[0] for v in b]))
+    out = []
+    for i, x in enumerate(xs):
+        za, zb = sec_value(a, x), sec_value(b, x)
+        if i:
+            x0 = xs[i - 1]; da0 = sec_value(a, x0) - sec_value(b, x0); da1 = za - zb
+            if da0 * da1 < 0:
+                xc = x0 + (x - x0) * da0 / (da0 - da1)
+                out.append([xc, sec_value(a, xc)])
+        out.append([x, min(za, zb)])
+    clean = [out[0]]
+    for v in out[1:]:
+        if v[0] - clean[-1][0] > 1e-12: clean.append(v)
+        else: clean[-1] = [clean[-1][0], min(clean[-1][1], v[1])]
+    return clean
+
+def sec_trough(zv, C):
+    return [[i / SEC_N, zv + C * (i / SEC_N) ** 2] for i in range(SEC_N + 1)]
+
+def sec_surface(rel, R, C):
+    zr = rel[-1][1]; zv = zr - R
+    if rel[0][1] - zv <= EPS: return [v[:] for v in rel]
+    return sec_min(rel, sec_trough(zv, max(C, R)))
+
+def sec_landslide(cur, Rn):
+    zr = cur[-1][1]; z0 = cur[0][1]; a = sec_area(cur) - 0.5 * Rn
+    if a < z0:                                     # floor kept, ridge down: line from x1 on the wall
+        zt = z0 + Rn; A1 = sec_area(cur); lo, hi = 0.0, 1.0
+        for _ in range(60):
+            mid = 0.5 * (lo + hi); zm = sec_value(cur, mid)
+            if (1.0 - mid) * 0.5 * (zm + zt) - (A1 - sec_area(cur, mid)) > 0: lo = mid
+            else: hi = mid
+        x1 = 0.5 * (lo + hi)
+        return [v[:] for v in cur if v[0] < x1 - 1e-9] + [[x1, sec_value(cur, x1)], [1.0, zt]]
+    if a + Rn <= zr + EPS: return [[0.0, a], [1.0, a + Rn]]
+    a = zr - Rn; lo, hi = 0.0, 1.0
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if mid * 0.5 * (a + sec_value(cur, mid)) - sec_area(cur, mid) > 0: lo = mid
+        else: hi = mid
+    x2 = 0.5 * (lo + hi)
+    return [[0.0, a], [x2, sec_value(cur, x2)]] + [v[:] for v in cur if v[0] > x2 + 1e-9]
+
+def sec_C(p):
+    return p["T0"] + p["B"]
+
+def section_states(sim):
+    """[{t, rel, pre}]: the relict surface from each landslide on, from a flat surface at t = 0"""
+    C = sec_C(sim["p"]); rel = [[0.0, 0.0], [1.0, 0.0]]; out = [dict(t=0.0, rel=rel, pre=None)]
+    for f in sim["fails"]:
+        if f["frm"] - f["to"] <= EPS: continue
+        cur = sec_surface(rel, f["frm"], C); rel = sec_landslide(cur, f["to"])
+        out.append(dict(t=f["t"], rel=rel, pre=cur))
+    return out
+
+def section_at(sim, states, t):
+    p = sim["p"]; C = sec_C(p); k = 0
+    while k + 1 < len(states) and states[k + 1]["t"] <= t: k += 1
+    st = states[k]; R = value_at(sim["path"], t)
+    cur = sec_surface(st["rel"], R, C); m = sec_area(cur)
+    pts = [[v[0], v[1] - m] for v in cur]
+    # intact threshold at t: buttressing at the ice nodes, linear between (as the model)
+    ice = sim["ice"]; n = len(ice) - 1; i = min(max(int(t / p["dtH"]), 0), n - 1)
+    ba, bb = p["B"] * butt(ice[i][1], p), p["B"] * butt(ice[i + 1][1], p)
+    Ti = p["T0"] + ba + (bb - ba) * (t - ice[i][0]) / (ice[i + 1][0] - ice[i][0])
+    H = value_at(ice, t)
+    return dict(pts=pts, R=R, ghost=[[v[0], v[1] - m] for v in st["pre"]] if st["pre"] else None,
+                age=t - st["t"], weak=max(0.0, (Ti - value_at(sim["thr"], t)) / Ti),
+                H=H, zIce=pts[0][1] + SEC_ICE * C * H)
+
+def section_fingerprint(extra=None):
+    s = simulate(extra); states = section_states(s); out = "%d" % (len(states) - 1)
+    for t in [37.3, 101.9, 171.3, 199.9]:
+        sec = section_at(s, states, t); pts = sec["pts"]
+        out += " %.9f %d %.9f" % (sum(abs(v[1]) + v[0] for v in pts), len(pts), sec["zIce"] + sec["weak"])
+    return out
+
+
 def fingerprint(extra=None):
     s = simulate(extra)
     sp = sum(v[1] for v in s["path"]); st = sum(v[1] for v in s["thr"]); si = sum(v[1] for v in s["ice"])
@@ -192,3 +322,4 @@ if __name__ == "__main__":
     for f in s["fails"]:
         print("fail t=%.2f (%.1f ka) %s %.3f -> %.3f dmg %.3f" % (f["t"], 200 - f["t"], f["cause"], f["frm"], f["to"], f["dmg"]))
     print("fractures", len(s["fracs"]))
+    print("section", section_fingerprint(), "|", section_fingerprint({"ice": "retreat"}))

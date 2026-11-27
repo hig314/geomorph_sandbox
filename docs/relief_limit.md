@@ -307,7 +307,38 @@ frame. Embedding as `index.html`: `relief-step` or `deck:step` with `replay` (fo
 draw it, in `dur` seconds if given) or without (from a later slide: the whole record);
 clicker keys go back as `deck-key`.
 
-Validation (`py/test_glacier_buttress.py`, 103 checks over 14 settings, three of them the
+**The cross-section: a glacial trough** (added 2026-11-27 at the user's direction, as the
+seven steps have one). A circle of radius 150 inside the axes at the lower left, below the
+relief line in both histories, shows the same history as a valley: the trough in the middle
+with its glacier, a ridge either side, rock and damage in the colours of the relief figure,
+the glacier a mid blue. A reading of the state at the time cursor (`GS.glacier.sectionAt`),
+with no effect on R(t). Half-section z(x), valley centre at x = 0, ridge at x = 1:
+
+    incision    z(x) = min( z_relict(x), z_floor + C·x² ),  z_ridge − z_floor = R(t),
+                C = T0 + B, the highest threshold: a full U, floor to crest, stands at it.
+                The parabola is the usual shape of a glacial trough (a power law of exponent
+                about 2); it is a polyline on 32 cells and the min is exact for polylines.
+                No erosion, so no incision, while the glacier is gone.
+    landslide   R → R′: the wall becomes a straight line of equal area (cut = fill). Three
+                cases: the full line from the valley centre to the ridge; if that would stand
+                above the old ridge, the ridge stays, the floor rises by R − R′ and the line
+                ends on the old surface where cut = fill (as the relief figure); if it would
+                pass below the old floor, which on a U (low, wide floor) is the usual case for
+                a small failure, the floor stays, the crest comes down by R − R′ and the line
+                starts on the wall where cut = fill: the debris stops on the wall. In three
+                settings (defaults, retreating, erosion × 3) 87 of 95 landslides are of this kind.
+    ice         the glacier fills the trough to 0.6·C·H(t) above the floor, flat-topped
+    weakening   a pale lens under each wall, floor to the top of the wall, of depth
+                R·D/T_intact·4s(1 − s): the fraction of the threshold lost to damage, as the
+                relief figure's lens
+    datum       the section's mean elevation, which a landslide conserves; the glacier's
+                export of debris is not shown
+
+The failed surface lingers as a thin line for 3 % of the record. "Cross-section" (URL
+`section=off`) hides it. Choices open to change: C, the parabola, the ice depth factor 0.6,
+the debris staying on the wall (not carried off by the glacier), the flat ice surface.
+
+Validation (`py/test_glacier_buttress.py`, 111 checks over 14 settings, three of them the
 retreating glacier): relief budget R0 + E·(time with ice) − Σdrops = R_end (8e-14); relief grows at exactly E with ice and not at all without; the threshold reconstructed as
 T0 + B·b − (fracture drops since the last failure) at every vertex (2e-16); each fracture
 after exactly its quota of ∫|d(B·b)| (8e-15), the quota within qMean·(1 ± qJit), and drops W·q; relief never above the threshold or
@@ -320,7 +351,14 @@ dt 0.01 … 0.00015625 with no weakening; the errors fall in steps, set by where
 land on the step grid, so the test asks for an order ≥ 0.5 over the 64-fold refinement; the
 four settings give 0.62–1.03). The retreating glacier: ice-free 127.5–125.5, 121.5–118.5 and 9–5 ka, the stade between, ice in
 the late Holocene, none at the end; no fracture while the ice is gone; the threshold there at
-most T0. The thick history's fingerprint is unchanged by the option. `GS.glacier.fingerprint()` equals the Python line for
+most T0. The thick history's fingerprint is unchanged by the option. The cross-section, over 375
+landslides in all 14 settings: every landslide conserves area (1e-15) and leaves floor to
+ridge at R′, and floor to ridge equals R(t) at sampled times with the mean elevation the
+datum (6e-15); the surface rises from the valley centre to the ridge; carving only removes
+rock; a landslide never raises the ridge nor lowers the floor; outside the cut/fill line the
+old surface is unchanged; the ice fills to 0.6·C·H; the lens fraction is in [0, 1) and 0
+without weakening. `GS.glacier.sectionFingerprint()` equals the Python line for three
+settings (2026-11-27). `GS.glacier.fingerprint()` equals the Python line for
 three settings (2026-11-27).
 
 Asserted, open to change: the ice envelope and fluctuation amplitude; B = 0.5 and the

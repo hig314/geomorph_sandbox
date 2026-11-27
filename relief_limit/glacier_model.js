@@ -188,6 +188,145 @@
     return b[0] === a[0] ? a[1] : a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
   }
 
+  // ---- The cross-section: a glacial trough read from the same history ---------------------
+  // A half-section z(x), valley centre at x = 0, ridge at x = 1 (x in units of the half-spacing,
+  // z in units of T0), mirrored about the centre and the ridge when drawn. As the relief
+  // figure's ridge–valley section (model.js), with the limiting slope a U, not a straight line:
+  //   incision    the glacier cuts the floor down and a parabolic trough z_valley + C·x² (C the
+  //               highest threshold, T0 + B: a full trough stands at it) climbs from it; above
+  //               where it meets the older surface, that surface is untouched:
+  //               z(x) = min(relict(x), z_valley + C·x²),  z_valley = z_ridge − R(t)
+  //               (the parabola as a polyline on SEC_N cells; the min is exact for polylines)
+  //   landslide   R → R′: the surface becomes a straight line of equal area (cut = fill), valley
+  //               centre to ridge. If that line would stand above the old ridge, the ridge stays,
+  //               the floor rises by R − R′, and the line ends at the point x2 of the old surface
+  //               where cut = fill. If it would pass below the old floor (a small failure on a U,
+  //               whose floor is low and wide), the floor stays, the ridge comes down by R − R′,
+  //               and the line starts at the point x1 of the old wall where cut = fill: the
+  //               debris stops on the wall
+  //   ice         the glacier fills the trough to SEC_ICE·C·H(t) above the floor, flat-topped
+  //   weakening   damage D / T_intact, drawn as a lens under the wall (glacier_app.js)
+  //   datum       drawn about the mean elevation of the section, which a landslide conserves
+  // Mirrored in py/glacier_buttress.py and checked there. Nothing here feeds back on R(t).
+  var SEC_N = 32, SEC_ICE = 0.6;
+
+  function secArea(poly, xTo) {
+    var a = 0, i, p0, p1, zc;
+    if (xTo === undefined) xTo = 1;
+    for (i = 0; i + 1 < poly.length; i++) {
+      p0 = poly[i]; p1 = poly[i + 1];
+      if (xTo <= p0[0]) break;
+      if (xTo < p1[0]) {
+        zc = p0[1] + (p1[1] - p0[1]) * (xTo - p0[0]) / (p1[0] - p0[0]);
+        return a + 0.5 * (p0[1] + zc) * (xTo - p0[0]);
+      }
+      a += 0.5 * (p0[1] + p1[1]) * (p1[0] - p0[0]);
+    }
+    return a;
+  }
+  function secValue(poly, x) {
+    var i, p0, p1;
+    for (i = 0; i + 1 < poly.length; i++) {
+      p0 = poly[i]; p1 = poly[i + 1];
+      if (x <= p1[0]) return p1[0] === p0[0] ? p0[1] : p0[1] + (p1[1] - p0[1]) * (x - p0[0]) / (p1[0] - p0[0]);
+    }
+    return poly[poly.length - 1][1];
+  }
+  // Pointwise minimum of two polylines on [0, 1], crossings inserted (exact).
+  function secMin(a, b) {
+    var seen = {}, xs = [], i, x, x0, za, zb, d0, d1, xc, out = [], clean, v;
+    a.concat(b).forEach(function (p) { if (!seen[p[0]]) { seen[p[0]] = true; xs.push(p[0]); } });
+    xs.sort(function (u, w) { return u - w; });
+    for (i = 0; i < xs.length; i++) {
+      x = xs[i]; za = secValue(a, x); zb = secValue(b, x);
+      if (i) {
+        x0 = xs[i - 1]; d0 = secValue(a, x0) - secValue(b, x0); d1 = za - zb;
+        if (d0 * d1 < 0) { xc = x0 + (x - x0) * d0 / (d0 - d1); out.push([xc, secValue(a, xc)]); }
+      }
+      out.push([x, Math.min(za, zb)]);
+    }
+    clean = [out[0]];
+    for (i = 1; i < out.length; i++) {
+      v = out[i];
+      if (v[0] - clean[clean.length - 1][0] > 1e-12) clean.push(v);
+      else clean[clean.length - 1] = [clean[clean.length - 1][0], Math.min(clean[clean.length - 1][1], v[1])];
+    }
+    return clean;
+  }
+  function secTrough(zv, C) {
+    var out = [], i;
+    for (i = 0; i <= SEC_N; i++) out.push([i / SEC_N, zv + C * (i / SEC_N) * (i / SEC_N)]);
+    return out;
+  }
+  function secSurface(rel, R, C) {
+    var zv = rel[rel.length - 1][1] - R;
+    if (rel[0][1] - zv <= EPS) return rel.map(function (v) { return v.slice(); });
+    return secMin(rel, secTrough(zv, Math.max(C, R)));
+  }
+  function secLandslide(cur, Rn) {
+    var zr = cur[cur.length - 1][1], z0 = cur[0][1], A = secArea(cur), a = A - 0.5 * Rn, lo = 0, hi = 1, mid, it, zt, x1, x2, out, i;
+    if (a < z0) {                                   // floor kept, ridge down: line from x1 on the wall
+      zt = z0 + Rn;
+      for (it = 0; it < 60; it++) {
+        mid = 0.5 * (lo + hi);
+        if ((1 - mid) * 0.5 * (secValue(cur, mid) + zt) - (A - secArea(cur, mid)) > 0) lo = mid; else hi = mid;
+      }
+      x1 = 0.5 * (lo + hi); out = [];
+      for (i = 0; i < cur.length; i++) if (cur[i][0] < x1 - 1e-9) out.push(cur[i].slice());
+      out.push([x1, secValue(cur, x1)]); out.push([1, zt]);
+      return out;
+    }
+    if (a + Rn <= zr + EPS) return [[0, a], [1, a + Rn]];
+    a = zr - Rn;                                    // ridge kept, floor up: line to x2 on the old surface
+    for (it = 0; it < 60; it++) {
+      mid = 0.5 * (lo + hi);
+      if (mid * 0.5 * (a + secValue(cur, mid)) - secArea(cur, mid) > 0) lo = mid; else hi = mid;
+    }
+    x2 = 0.5 * (lo + hi);
+    out = [[0, a], [x2, secValue(cur, x2)]];
+    for (i = 0; i < cur.length; i++) if (cur[i][0] > x2 + 1e-9) out.push(cur[i].slice());
+    return out;
+  }
+  function secC(p) { return p.T0 + p.B; }
+  // [{t, rel, pre}]: the relict surface from each landslide on, from a flat surface at t = 0.
+  function sectionStates(sim) {
+    var C = secC(sim.p), rel = [[0, 0], [1, 0]], out = [{ t: 0, rel: rel, pre: null }], i, f, cur;
+    for (i = 0; i < sim.fails.length; i++) {
+      f = sim.fails[i];
+      if (f.from - f.to <= EPS) continue;
+      cur = secSurface(rel, f.from, C); rel = secLandslide(cur, f.to);
+      out.push({ t: f.t, rel: rel, pre: cur });
+    }
+    return out;
+  }
+  // The section at time t: pts (about its mean elevation), relief R, the surface the last
+  // landslide failed from (ghost, same datum) and the time since (age), the damage standing in
+  // the rock as a fraction of the intact threshold (weak), the ice H and its level zIce.
+  function sectionAt(sim, states, t) {
+    var p = sim.p, C = secC(p), k = 0, st, R, cur, m, ice = sim.ice, n = ice.length - 1, i, ba, bb, Ti, H, pts;
+    while (k + 1 < states.length && states[k + 1].t <= t) k++;
+    st = states[k]; R = valueAt(sim.path, t);
+    cur = secSurface(st.rel, R, C); m = secArea(cur);
+    function shift(v) { return [v[0], v[1] - m]; }
+    pts = cur.map(shift);
+    i = Math.min(Math.max(Math.floor(t / p.dtH), 0), n - 1);
+    ba = p.B * butt(ice[i][1], p); bb = p.B * butt(ice[i + 1][1], p);
+    Ti = p.T0 + ba + (bb - ba) * (t - ice[i][0]) / (ice[i + 1][0] - ice[i][0]);
+    H = valueAt(ice, t);
+    return { pts: pts, R: R, ghost: st.pre ? st.pre.map(shift) : null, age: t - st.t,
+             weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + SEC_ICE * C * H };
+  }
+  // Same line as py/glacier_buttress.py section_fingerprint() prints.
+  function sectionFingerprint(extra) {
+    var s = simulate(extra), states = sectionStates(s), out = String(states.length - 1);
+    [37.3, 101.9, 171.3, 199.9].forEach(function (t) {
+      var sec = sectionAt(s, states, t), pts = sec.pts, sum = 0, i;
+      for (i = 0; i < pts.length; i++) sum += Math.abs(pts[i][1]) + pts[i][0];
+      out += " " + sum.toFixed(9) + " " + pts.length + " " + (sec.zIce + sec.weak).toFixed(9);
+    });
+    return out;
+  }
+
   // Same line as py/glacier_buttress.py fingerprint() prints.
   function fingerprint(extra) {
     var s = simulate(extra), sp = 0, st = 0, si = 0, i;
@@ -198,5 +337,6 @@
       sp.toFixed(9) + " " + st.toFixed(9) + " " + si.toFixed(9);
   }
 
-  GS.glacier = { DEFAULTS: DEFAULTS, ICE_KEYS: ICE_KEYS, ICE: ICE, butt: butt, simulate: simulate, makeIce: makeIce, valueAt: valueAt, fingerprint: fingerprint };
+  GS.glacier = { DEFAULTS: DEFAULTS, ICE_KEYS: ICE_KEYS, ICE: ICE, butt: butt, simulate: simulate, makeIce: makeIce, valueAt: valueAt, fingerprint: fingerprint,
+                 sectionStates: sectionStates, sectionAt: sectionAt, sectionFingerprint: sectionFingerprint, SEC_ICE: SEC_ICE };
 })(typeof window !== "undefined" ? window : this);

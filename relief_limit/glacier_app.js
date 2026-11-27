@@ -16,9 +16,16 @@
   // shortened to make room for the ice panel between it and the slider row.
   var W = 1920, H = 1080, X0 = 130, X1 = 1590, Y0 = 700, Y1 = 90, IY0 = 900, IY1 = 760, HMAX = 1.15;
   var THEMES = {
-    light: { bg: "#ffffff", ink: "#1a1a1a", axis: "#9a9a9a", text: "#555555", limit: "#7a7a7a", ice: "#3f7cb0", iceFill: "#d5e5f2" },
-    dark:  { bg: "#111111", ink: "#f2f2f2", axis: "#777777", text: "#b8b8b8", limit: "#a0a0a0", ice: "#86b8e0", iceFill: "#1f3547" }
+    light: { bg: "#ffffff", ink: "#1a1a1a", axis: "#9a9a9a", text: "#555555", limit: "#7a7a7a", ice: "#3f7cb0", iceFill: "#d5e5f2", rock: "#5c4d42", weak: "#e2d6c6", secIce: "#a9cbe8" },
+    dark:  { bg: "#111111", ink: "#f2f2f2", axis: "#777777", text: "#b8b8b8", limit: "#a0a0a0", ice: "#86b8e0", iceFill: "#1f3547", rock: "#857263", weak: "#efe6d8", secIce: "#4f7fa8" }
   };
+  // The cross-section (as app.js): a circle inside the axes at the lower left, below the relief
+  // line, showing the glacial trough whose relief the graph plots (GL.sectionAt): the valley in
+  // the middle with its glacier, a ridge either side; the half-spacing is SEC_W radii. The
+  // highest threshold, T0 + B (a full trough), spans SEC_FILL of the diameter. Rock and the
+  // damage lens in the relief figure's colours, the glacier a mid blue so it reads on the rock.
+  // The surface a landslide failed from lingers as a thin line for SEC_GHOST of the record.
+  var SEC_R = 150, SEC_X = 130 + (1590 - 130) * 0.175, SEC_Y = 700 - 150 - 14, SEC_W = 0.8, SEC_FILL = 0.46, SEC_GHOST = 0.03;
   var WT = 4, FONT = "Helvetica Neue, Helvetica, Arial, sans-serif";
   var W_REF = GL.DEFAULTS.W; // weakening at "× 1"
   // glacial stages, labelled under the ice panel's time axis: [age at the label, text, anchor]
@@ -42,6 +49,8 @@
       "How many seconds the record takes to draw across the slide. It changes nothing in the model, only the pace of the animation.", null),
     theme: M("Slide background", [], "Light or dark, to match the deck. Colours only; the saved SVG uses the theme shown.", null),
     frame: M("Sliders in the frame", [], "The two sliders, weakening and erosion rate, sit inside the 16:9 frame under the ice panel, where they stay visible in full screen. They are the same quantities as the controls of the same name below and move together with them. The saved SVG does not include them.", null),
+    section: M("Cross-section", ["z(x) = min( z<sub>relict</sub>(x),  z<sub>floor</sub> + C·x² ),   C = T<sub>0</sub> + B,   z<sub>ridge</sub> − z<sub>floor</sub> = R(t)", "landslide R → R′:  straight line with  ∫cut dx = ∫fill dx", "ice level:  z<sub>floor</sub> + 0.6·C·H(t);   damaged depth at x:  R · D / T<sub>intact</sub> · 4s(1 − s)"],
+      "The same history drawn as a valley, in the circle at the lower left: a glacial trough in the middle with its glacier, a ridge either side, rock dark and the glacier blue. The height from the valley floor to the ridge crest is the relief on the graph at the time cursor, at every instant. <b>Glacial erosion:</b> the glacier cuts the floor down and a U, a parabola z ∝ x² (the usual shape of a glacial trough), climbs from it; above where it meets the older surface, that surface is untouched. A full U, floor to crest, stands at the highest threshold. Erosion stops while the glacier is gone. <b>Landslide:</b> the wall is replaced by a straight, gentler line that removes as much rock from above as it lays down below. Most failures start part-way up the wall: the crest comes down and the debris stops on the wall, above the floor. A large one reaches the floor and the crest stays. The glacier then cuts the U back into the bottom of the scar. <b>Glacier:</b> fills the trough to a depth set by the ice thickness on the graph. <b>Weakening:</b> damaged rock is a pale lens under each wall, nothing at the floor and the crest and thickest half-way up; its depth there is the same fraction of the wall's height as the threshold has lost to damage, and the landslide that removes the damage removes it. The section is drawn about its mean elevation, which a landslide does not change; the glacier's export of debris is not shown. It is a reading of R(t), with no effect on it; the thin line after a landslide is the surface that failed.", SRC, "asserted"),
     ref: M("Threshold without damage", ["T<sub>intact</sub> = T<sub>0</sub> + B·b(H),   b = (1 − e<sup>−H/H<sub>s</sub></sup>) / (1 − e<sup>−1/H<sub>s</sub></sup>),   H<sub>s</sub> = 0.3"],
       "A faded, wide line behind the threshold: what the threshold would be with buttressing alone and no fracturing. The gap between it and the dashed threshold is the damage standing in the rock at that moment; it closes at every landslide.", SRC, null),
     R0: M("Initial relief R<sub>0</sub>", ["R(200 ka) = R<sub>0</sub>"],
@@ -65,6 +74,8 @@
     { id: "frame", label: "Sliders in frame", type: "select", val: "on", group: "Figure", method: m.frame,
       options: [{ v: "on", t: "shown" }, { v: "off", t: "hidden" }] },
     { id: "ref", label: "Threshold without damage", type: "select", val: "on", group: "Figure", method: m.ref,
+      options: [{ v: "on", t: "shown" }, { v: "off", t: "hidden" }] },
+    { id: "section", label: "Cross-section", type: "select", val: "on", group: "Figure", method: m.section,
       options: [{ v: "on", t: "shown" }, { v: "off", t: "hidden" }] }
   ];
   var url = GS.ui.urlState(GS.ui.toUrlSpecs(specs));
@@ -115,6 +126,17 @@
       .attr("clip-path", "url(#gb-clip)").style("pointer-events", "stroke").style("cursor", "help");
   }
   var hitIce = hit("path"), hitRef = hit("path"), hitThr = hit("path"), hitRelief = hit("path");
+  // the cross-section
+  svg.select("defs").append("clipPath").attr("id", "gb-sec").append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R);
+  var secG = svg.append("g").style("pointer-events", "none");
+  var secAir = secG.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R);
+  var secIn = secG.append("g").attr("clip-path", "url(#gb-sec)");
+  var secRock = secIn.append("path"), secWeak = secIn.append("path"), secIce = secIn.append("path");
+  var secIceTop = secIn.append("path").attr("fill", "none").attr("stroke-width", WT / 2);
+  var secGhost = secIn.append("path").attr("fill", "none").attr("stroke-width", WT / 2);
+  var secRing = secG.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R).attr("fill", "none").attr("stroke-width", WT);
+  var hitSec = svg.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R).attr("fill", "transparent").style("pointer-events", "all").style("cursor", "help");
+  var secStates = null;
 
   var sim = null, pal = THEMES.light, tc = 0, playing = false, lastNow = 0, yMax = 1.65, pace = 0;
   function x(t) { return X0 + (X1 - X0) * t / sim.p.tmax; }
@@ -166,6 +188,71 @@
       .attr("stroke", pal.ink).attr("stroke-width", 2.5 * WT).attr("stroke-linecap", "butt");
     var dRel = poly(sim.path, y);
     relief.attr("stroke", pal.ink).attr("d", dRel); hitRelief.attr("d", dRel);
+    secStates = GL.sectionStates(sim);
+    secG.style("display", state.section === "off" ? "none" : null);
+    hitSec.style("display", state.section === "off" ? "none" : null);
+    secAir.attr("fill", pal.bg); secRock.attr("fill", pal.rock); secWeak.attr("fill", pal.weak);
+    secIce.attr("fill", pal.secIce); secIceTop.attr("stroke", pal.ice); secGhost.attr("stroke", pal.ink); secRing.attr("stroke", pal.axis);
+  }
+
+  // The cross-section at the time cursor (GL.sectionAt): the half-section x in [0, 1] (valley
+  // centre to ridge) mirrored about the centre and about the ridges, x from −2 to 2.
+  function secPath(pts, lead) {
+    var wpx = SEC_W * SEC_R, v = 2 * SEC_FILL * SEC_R / (sim.p.T0 + sim.p.B), s = "", i;
+    for (i = 0; i < pts.length; i++) s += (i ? "L" : lead) + (SEC_X + pts[i][0] * wpx).toFixed(2) + "," + (SEC_Y - pts[i][1] * v).toFixed(2);
+    return s;
+  }
+  function secCycle(pts) { // valley, ridge, valley, ridge, valley: x from −2 to 2
+    var right = pts.slice(), n = pts.length, i, out = [];
+    for (i = n - 2; i >= 0; i--) right.push([2 - pts[i][0], pts[i][1]]);
+    for (i = right.length - 1; i > 0; i--) out.push([-right[i][0], right[i][1]]);
+    return out.concat(right);
+  }
+  // Damaged rock: a lens under each wall from the floor (x = 0) to the top of the wall xt (the
+  // crest, or the edge of what is left of the original flat), of vertical depth
+  // lost · 4s(1 − s), s = x / xt, with lost = weak · R at mid-wall (as app.js).
+  function secLens(pts, lost) {
+    var n = pts.length, xt = pts[n - 1][1] - pts[n - 2][1] < 1e-9 ? pts[n - 2][0] : 1;
+    if (!(lost > 0) || xt < 1e-6) return null;
+    var xs = [], top = [], bot = [], i, j = 0, xx, z, sx, a, b, d = "";
+    for (i = 0; i <= 24; i++) xs.push(xt * i / 24);
+    for (i = 1; i < n - 1; i++) if (pts[i][0] < xt) xs.push(pts[i][0]);
+    xs.sort(function (u, w) { return u - w; });
+    for (i = 0; i < xs.length; i++) {
+      xx = xs[i];
+      while (j + 2 < n && pts[j + 1][0] < xx) j++;
+      a = pts[j]; b = pts[j + 1];
+      z = a[1] + (b[1] - a[1]) * (xx - a[0]) / (b[0] - a[0]); sx = xx / xt;
+      top.push([xx, z]); bot.push([xx, z - lost * 4 * sx * (1 - sx)]);
+    }
+    [function (q) { return q; }, function (q) { return [-q[0], q[1]]; }, function (q) { return [2 - q[0], q[1]]; }, function (q) { return [q[0] - 2, q[1]]; }]
+      .forEach(function (tf) { d += secPath(top.map(tf), "M") + secPath(bot.map(tf).reverse(), "L") + "Z"; });
+    return d;
+  }
+  // The glacier: below the ice level, between the surface and a flat top, in each valley.
+  function secGlacier(pts, zi) {
+    var n = pts.length, k, xi, q = [], top = "", fill = "";
+    if (!(zi > pts[0][1] + 1e-9)) return { fill: null, top: null };
+    for (k = 0; k + 1 < n && pts[k + 1][1] < zi; k++) q.push(pts[k]);
+    if (k + 1 < n) { xi = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * (zi - pts[k][1]) / (pts[k + 1][1] - pts[k][1]); q.push(pts[k]); }
+    else { xi = 1; q.push(pts[n - 1]); zi = Math.min(zi, pts[n - 1][1]); }
+    q.push([xi, zi]);
+    [-2, 0, 2].forEach(function (c) {
+      var half = q.map(function (v) { return [c + v[0], v[1]]; }), mirror = q.map(function (v) { return [c - v[0], v[1]]; }).reverse();
+      fill += secPath(mirror.concat(half.slice(1)), "M") + "Z";
+      top += secPath([[c - xi, zi], [c + xi, zi]], "M");
+    });
+    return { fill: fill, top: top };
+  }
+  function drawSection() {
+    if (state.section === "off") return;
+    var sec = GL.sectionAt(sim, secStates, tc), f = secCycle(sec.pts), top = secPath(f, "M");
+    var xa = SEC_X - 2.5 * SEC_R, xb = SEC_X + 2.5 * SEC_R, yb = SEC_Y + 2 * SEC_R, gl = secGlacier(sec.pts, sec.zIce);
+    var fade = sec.ghost ? Math.max(0, 1 - sec.age / (SEC_GHOST * sim.p.tmax)) : 0;
+    secRock.attr("d", top + "L" + xb + "," + yb + "L" + xa + "," + yb + "Z");
+    secWeak.attr("d", secLens(sec.pts, sec.weak * sec.R));
+    secIce.attr("d", gl.fill); secIceTop.attr("d", gl.top);
+    secGhost.attr("d", fade > 0 ? secPath(secCycle(sec.ghost), "M") : null).attr("stroke-opacity", fade);
   }
 
   // Everything that follows the time cursor.
@@ -179,6 +266,7 @@
     fracG.selectAll("line").style("display", function (d) { return d.t <= tc ? null : "none"; });
     thrLab.attr("y", y(T));
     refLab.attr("y", y(Ti)).style("display", state.ref === "off" || Math.abs(y(Ti) - y(T)) < 40 ? "none" : null);
+    drawSection();
   }
 
   // ---- In-frame sliders (as app.js) ------------------------------------------
@@ -217,6 +305,15 @@
   });
   GS.ui.tip.attach(hitRef, function () {
     return GS.ui.curveTip("Threshold without damage", pal.limit, "solid", "Buttressing alone: what the threshold would be without fracturing. The gap below it is the damage standing in the rock.", "T<sub>0</sub> + B·b(H)");
+  });
+  GS.ui.tip.attach(hitSec, function () {
+    var sec = GL.sectionAt(sim, secStates, tc);
+    return GS.ui.curveTip("Cross-section", pal.rock, "fill",
+      "A glacial trough of the slope whose relief the graph plots: valley floor to crest is " + sec.R.toFixed(2) + " T<sub>0</sub> at the time cursor" +
+      (sec.H > 0 ? ", with the glacier " + Math.round(100 * sec.H) + " % of its largest thickness." : ", and the glacier is gone.") +
+      " The glacier cuts a U into the floor; each landslide slices the wall straight and gentler, and the U is cut back into it from the bottom." +
+      (sec.weak > 0.005 ? " The pale lens is damaged rock: " + Math.round(100 * sec.weak) + " % of the threshold lost to fracturing; the next landslide removes it." : "") + " Details on the Cross-section control below.",
+      "z(x) = min( z<sub>relict</sub>,  z<sub>floor</sub> + C·x² )");
   });
   GS.ui.tip.attach(hitIce, function () {
     return GS.ui.curveTip("Ice thickness", pal.ice, "solid",
@@ -295,7 +392,7 @@
   // ---- Controls -------------------------------------------------------------
   function onChange(id) {
     rebuild();
-    if (id !== "theme" && id !== "drawTime" && id !== "frame" && id !== "ref") { playing = false; tc = sim.p.tmax; } // tuning: show the whole record
+    if (id !== "theme" && id !== "drawTime" && id !== "frame" && id !== "ref" && id !== "section") { playing = false; tc = sim.p.tmax; } // tuning: show the whole record
     draw(); syncFrame(); readout(); buttons(); url.write(state);
   }
   var controls = GS.ui.buildControls(d3.select("#controls"), specs, state, onChange);

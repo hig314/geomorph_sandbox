@@ -176,6 +176,39 @@ for c in [{}, {"W": 0}, {"E": 2}, {"ice": "retreat"}]:
           " → ".join("%.1e" % e[2] for e in errs) + " (dt 0.01 … 0.00015625); order %.2f, %.2f" %
           (math.log(errs[0][1] / errs[-1][1]) / math.log(64), math.log(errs[0][2] / errs[-1][2]) / math.log(64)))
 
+# ---- the cross-section (glacial trough) -------------------------------------------------
+wm = wr = 0.0; ok_mono = ok_ridge = ok_above = ok_ice = ok_lens = ok_trough = True; nls = 0
+for c in SETS:
+    s = gb.simulate(c); states = gb.section_states(s); C = gb.sec_C(s["p"])
+    for k in range(1, len(states)):
+        pre, rel = states[k]["pre"], states[k]["rel"]; f = [f for f in s["fails"] if f["t"] == states[k]["t"] and f["frm"] - f["to"] > gb.EPS][0]
+        nls += 1
+        wm = max(wm, abs(gb.sec_area(pre) - gb.sec_area(rel)))                        # cut = fill
+        wr = max(wr, abs(pre[-1][1] - pre[0][1] - f["frm"]), abs(rel[-1][1] - rel[0][1] - f["to"]))
+        ok_ridge = ok_ridge and rel[-1][1] <= pre[-1][1] + 1e-12 and rel[0][1] >= pre[0][1] - 1e-12
+        # outside the cut/fill line the old surface is kept: every vertex is on it, or is the new floor or ridge
+        ok_above = ok_above and all(abs(gb.sec_value(pre, v[0]) - v[1]) < 1e-12 or v[0] in (0.0, 1.0) for v in rel)
+    for t in [0.0, 3.7, 29.9, 64.2, 101.9, 123.4, 150.05, 171.3, 188.8, 199.9, 200.0]:
+        sec = gb.section_at(s, states, t); p = sec["pts"]
+        wr = max(wr, abs(p[-1][1] - p[0][1] - sec["R"]), abs(gb.sec_area(p)))         # relief = R(t); datum = mean
+        ok_mono = ok_mono and all(b[0] > a[0] and b[1] >= a[1] - 1e-12 for a, b in zip(p, p[1:])) and p[0][0] == 0 and p[-1][0] == 1
+        # carving only removes rock: the surface is never above the one the last landslide left
+        kk = max(j for j in range(len(states)) if states[j]["t"] <= t); cur = gb.sec_surface(states[kk]["rel"], sec["R"], C)
+        ok_trough = ok_trough and all(v[1] <= gb.sec_value(states[kk]["rel"], v[0]) + 1e-12 for v in cur)
+        ok_ice = ok_ice and abs(sec["zIce"] - p[0][1] - gb.SEC_ICE * C * sec["H"]) < 1e-12 and (sec["H"] > 0 or sec["zIce"] == p[0][1])
+        ok_lens = ok_lens and 0 <= sec["weak"] < 1 and (c.get("W", 1) != 0 or sec["weak"] < 1e-12)
+check("section: every landslide conserves area (cut = fill)", wm < 1e-12, "%d landslides, worst %.1e" % (nls, wm))
+check("section: floor-to-ridge height = R(t) before and after every landslide and at sampled times; mean elevation is the datum", wr < 1e-9, "worst %.1e" % wr)
+check("section: surface rises from the valley centre to the ridge", ok_mono)
+check("section: carving only removes rock (never above the surface the last landslide left)", ok_trough)
+check("section: a landslide never raises the ridge nor lowers the floor", ok_ridge)
+check("section: outside the cut/fill line the old surface is unchanged", ok_above)
+check("section: ice fills the trough to 0.6·C·H above the floor; none when the glacier is gone", ok_ice)
+check("section: damage lens 0 ≤ D/T_intact < 1, and 0 with no weakening", ok_lens)
+print("section fingerprint (GS.glacier.sectionFingerprint() in the browser):")
+for c in [{}, {"ice": "retreat"}, {"ice": "retreat", "W": 0, "E": 0.25}]:
+    print("  ", c, gb.section_fingerprint(c))
+
 print("fingerprint (GS.glacier.fingerprint() in the browser):")
 for c in [{}, {"W": 0}, {"E": 2, "W": 0.6}, {"ice": "retreat"}, {"ice": "retreat", "W": 0, "E": 0.25}]:
     print("  ", c, gb.fingerprint(c))
