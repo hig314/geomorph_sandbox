@@ -234,7 +234,13 @@ under the main graph. Three effects of the glacier, as the user specified them:
                  climate change, piecewise linear through fixed points (ICE_KEYS). A thick
                  glacier: the interglacials keep ~40 % of the glacial maximum, and in the last
                  600 years the ice plunges from 0.38 to 0.04, lower than in any interglacial
-                 (added 2026-11-26 at the user's direction). ξ: Gaussian knots every 1.5–4 kyr (seeded),
+                 (added 2026-11-26 at the user's direction). A second history, "retreating"
+                 (`ice=retreat`, user direction 2026-11-27): the same glacials, but the ice is
+                 gone from 128 to 118 ka (early in the last interglacial) but for a small stade
+                 (125–122 ka, to 0.28 at 123.5 ka; user direction 2026-11-27), and from 10 to 4.5 ka
+                 (early in the Holocene), re-advances to 0.45 at 0.3 ka (a Little Ice Age
+                 maximum) and is gone at the end (RETREAT_KEYS, H ≥ 0, the fluctuation tapered
+                 by min(1, envelope/0.15) so the ice-free spans stay ice-free). ξ: Gaussian knots every 1.5–4 kyr (seeded),
                  cosine-interpolated: the glacier's internal dynamics. Polyline on a 0.25 kyr grid.
     buttressing  T = T0 + B·b − D,  b = (1 − e^(−H/Hs)) / (1 − e^(−1/Hs)), Hs = 0.3, at the
                  nodes of the ice polyline and linear between them; B = 0.5 (fixed, no
@@ -252,8 +258,10 @@ under the main graph. Three effects of the glacier, as the user specified them:
                  2026-11-27, replacing a stress of |dH| and an exponential quota of mean 0.2
                  with W = 0.25): they come where the support changes fast (thin ice), rarely
                  under thick ice
-    erosion      dR/dt = E = 0.012 T0/kyr × the Erosion rate slider (0–3), constant over the
-                 whole record because ice is present throughout
+    erosion      dR/dt = E = 0.012 T0/kyr × the Erosion rate slider (0–3) wherever there is
+                 ice (a grid cell with H > 0 at either end), 0 where it is gone: constant over
+                 the whole record for the thick glacier; relief stands still while the
+                 retreating one is gone
     failure      where R reaches T (erosion, or T falling as the ice thins) or a fracture
                  steps T to or below R: R ← max(T − d, floor), d from the truncated power law of
                  steps 6–7 (0.05–0.5 T0, α = 1); then D ← 0, the landslide removes the damaged
@@ -275,6 +283,15 @@ last four in the plunge. With weakening at zero and the default erosion, 19 of 2
 fall where the ice is thinning (debuttressing); weakening brings failures forward, at lower
 relief.
 
+The retreating glacier (seed 7): at the defaults 154 fractures and 22 landslides, one of them
+at 122.8 ka, set off by the damage the stade's coming and going left behind. Each
+complete retreat brings a cascade of failures as the buttressing goes (134–128 ka, relief
+1.40 → 0.71; 18–10 ka, 1.48 → 0.86); relief then stands still with the glacier gone. The
+returning ice fractures the rock fast, because thin ice is where buttressing changes most,
+so the fracture marks crowd where the glacier re-advances; the last two failures come with
+the final retreat. With erosion × 0.25 and no weakening: relief builds to 1.49, fails in a
+cascade at 130–128.7 ka down to 0.83, and then only at 11.1 and 10.3 ka.
+
 The figure keeps the frame and conventions of the seven steps: the same left, right and top
 edges, axis weight and grey, "Relief" and "Time" (38) where they stand there, curve labels
 (34) at the right, the in-frame sliders at the same place, line weights WT and 2·WT. Relief
@@ -290,17 +307,20 @@ frame. Embedding as `index.html`: `relief-step` or `deck:step` with `replay` (fo
 draw it, in `dur` seconds if given) or without (from a later slide: the whole record);
 clicker keys go back as `deck-key`.
 
-Validation (`py/test_glacier_buttress.py`, 80 checks over 11 settings): relief budget
-R0 + E·t − Σdrops = R_end (8e-14); relief grows at exactly E; the threshold reconstructed as
+Validation (`py/test_glacier_buttress.py`, 103 checks over 14 settings, three of them the
+retreating glacier): relief budget R0 + E·(time with ice) − Σdrops = R_end (8e-14); relief grows at exactly E with ice and not at all without; the threshold reconstructed as
 T0 + B·b − (fracture drops since the last failure) at every vertex (2e-16); each fracture
 after exactly its quota of ∫|d(B·b)| (8e-15), the quota within qMean·(1 ± qJit), and drops W·q; relief never above the threshold or
 below the floor; failures to max(T − d, floor) with d inside the cut-offs; W = 0 gives the
 buttressed threshold exactly and only thinning-ice or erosion failures (most on thinning
 ice); b saturating (b(0) = 0, b(1) = 1, rising, slope falling), and large Hs gives proportional buttressing; E = 0 relief never rises; the ice is independent of W and E; an independent
 time-stepped integration converges to the exact solution at first order with the same
-failure count (worst failure time 0.15 → 0.03 → 0.011 → 0.0026 kyr for dt 0.01 … 0.00015625;
-the errors fall in steps, set by where single events land on the step grid, so the test asks
-for ≥ 16× over the 64-fold refinement). `GS.glacier.fingerprint()` equals the Python line for
+failure count for both histories (worst failure time 0.15 → 0.03 → 0.011 → 0.0026 kyr for
+dt 0.01 … 0.00015625 with no weakening; the errors fall in steps, set by where single events
+land on the step grid, so the test asks for an order ≥ 0.5 over the 64-fold refinement; the
+four settings give 0.62–1.03). The retreating glacier: ice-free 127.5–125.5, 121.5–118.5 and 9–5 ka, the stade between, ice in
+the late Holocene, none at the end; no fracture while the ice is gone; the threshold there at
+most T0. The thick history's fingerprint is unchanged by the option. `GS.glacier.fingerprint()` equals the Python line for
 three settings (2026-11-27).
 
 Asserted, open to change: the ice envelope and fluctuation amplitude; B = 0.5 and the

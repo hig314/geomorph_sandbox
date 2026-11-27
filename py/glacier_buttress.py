@@ -8,9 +8,12 @@ thickness (0..1).
 
   ice         H(t) = max(Hmin, envelope(t) + fluctuation(t)), a polyline on a dtH grid.
               envelope: glacial (MIS 6) - interglacial (MIS 5e) - glacial (to the LGM) -
-              interglacial (Holocene), piecewise linear through ICE_KEYS; it never reaches
-              zero, so ice is present throughout. fluctuation: internal dynamics, seeded,
-              knots every 1.5-4 kyr with Gaussian values sigma*(0.4 + 0.6*envelope),
+              interglacial (Holocene), piecewise linear through the keys of the ice history
+              (p["ice"]): "thick" (ICE_KEYS) never reaches zero, so ice is present throughout;
+              "retreat" (RETREAT_KEYS) is gone early in both interglacials, re-advances in the
+              late Holocene and retreats completely at the end. fluctuation: internal dynamics,
+              seeded, knots every 1.5-4 kyr with Gaussian values
+              sigma*(0.4 + 0.6*envelope)*min(1, envelope/taper) (no taper for "thick"),
               cosine-interpolated between knots.
   threshold   T(t) = T0 - Dmg + B*b(t)
               buttressing: b = (1 - exp(-H/Hs)) / (1 - exp(-1/Hs)), Hs = 0.3, at the nodes of
@@ -21,7 +24,8 @@ thickness (0..1).
                            q = qMean*(1 + qJit*(2u - 1)) (u uniform, its own stream) the rock
                            fractures: Dmg += W*q, a step down in T
               a landslide removes the damaged rock: Dmg <- 0
-  relief      dR/dt = E (glacial erosion, constant: ice is present the whole time)
+  relief      dR/dt = E where there is ice (glacial erosion, constant), 0 on an ice-free grid
+              cell (both ends H = 0); with "thick" ice is present the whole time
   failure     where R reaches T (erosion, or T falling as the ice thins) or a fracture
               steps T to or below R:  R <- max(T - d, floor), then Dmg <- 0;
               d from a truncated power law on [dMin, dMax] (its own stream)
@@ -42,6 +46,16 @@ ICE_KEYS = [(200, 0.65), (186, 0.73), (176, 0.69), (160, 0.80), (148, 0.86), (14
             (135, 0.93), (129, 0.41), (117, 0.38), (110, 0.57), (103, 0.50), (92, 0.64),
             (85, 0.57), (70, 0.73), (60, 0.79), (50, 0.71), (35, 0.76), (24, 1.00),
             (19, 0.94), (11, 0.40), (0.6, 0.38), (0, 0.04)]
+# The same glacials, but the glacier retreats completely early in both interglacials: gone by
+# 128 ka, back briefly in a small stade (125-122 ka, to 0.28 at 123.5 ka), gone again until it
+# re-advances from 118 ka, gone by 10 ka until a late-Holocene re-advance from
+# 4.5 ka to a maximum at 0.3 ka (Little Ice Age), then the final retreat.
+RETREAT_KEYS = [(200, 0.65), (186, 0.73), (176, 0.69), (160, 0.80), (148, 0.86), (140, 0.97),
+                (135, 0.93), (128, 0.0), (125, 0.0), (123.5, 0.28), (122, 0.0), (118, 0.0), (110, 0.50), (103, 0.45), (92, 0.62),
+                (85, 0.55), (70, 0.73), (60, 0.79), (50, 0.71), (35, 0.76), (24, 1.00),
+                (19, 0.94), (10, 0.0), (4.5, 0.0), (0.3, 0.45), (0, 0.0)]
+ICE = {"thick": dict(keys=ICE_KEYS, Hmin=0.05, taper=0.0),
+       "retreat": dict(keys=RETREAT_KEYS, Hmin=0.0, taper=0.15)}
 
 DEFAULTS = dict(
     tmax=200.0,   # kyr
@@ -49,7 +63,7 @@ DEFAULTS = dict(
     T0=1.0,       # intact threshold with no ice
     B=0.5,        # buttressing at the largest thickness (fixed)
     Hs=0.3,       # saturation thickness of buttressing: stretched for thin ice, compressed for thick
-    Hmin=0.05,    # thinnest ice
+    ice="thick",  # ice history: "thick" or "retreat" (ICE)
     sigma=0.09,   # amplitude of the internal fluctuations
     E=1.0,        # erosion, as a multiple of Eref
     Eref=0.012,   # relief per kyr at E = 1
@@ -68,16 +82,16 @@ def gauss(rnd):
     return math.sqrt(-2.0 * math.log(u)) * math.cos(2.0 * math.pi * v)
 
 
-def envelope(t, tmax):
+def envelope(t, tmax, keys=ICE_KEYS):
     a = tmax - t
-    for (a0, h0), (a1, h1) in zip(ICE_KEYS, ICE_KEYS[1:]):
+    for (a0, h0), (a1, h1) in zip(keys, keys[1:]):
         if a <= a0 and a >= a1:
             return h0 + (h1 - h0) * (a0 - a) / (a0 - a1)
-    return ICE_KEYS[-1][1] if a < ICE_KEYS[-1][0] else ICE_KEYS[0][1]
+    return keys[-1][1] if a < keys[-1][0] else keys[0][1]
 
 
 def make_ice(p):
-    rnd = mulberry32(int(p["seed"]))
+    rnd = mulberry32(int(p["seed"])); sc = ICE[p["ice"]]
     tmax = p["tmax"]; kt = [-2.0 * rnd()]; kv = []
     while kt[-1] <= tmax:
         kt.append(kt[-1] + 1.5 + 2.5 * rnd())
@@ -89,9 +103,9 @@ def make_ice(p):
         while j + 2 < len(kt) and kt[j + 1] <= t:
             j += 1
         s = (t - kt[j]) / (kt[j + 1] - kt[j]); w = 0.5 - 0.5 * math.cos(math.pi * s)
-        env = envelope(t, tmax)
-        fl = p["sigma"] * (0.4 + 0.6 * env) * (kv[j] + (kv[j + 1] - kv[j]) * w)
-        out.append([t, max(p["Hmin"], env + fl)])
+        env = envelope(t, tmax, sc["keys"])
+        amp = p["sigma"] * (0.4 + 0.6 * env) * (min(1.0, env / sc["taper"]) if sc["taper"] > 0 else 1.0)
+        out.append([t, max(sc["Hmin"], env + amp * (kv[j] + (kv[j + 1] - kv[j]) * w))])
     return out
 
 
@@ -137,18 +151,19 @@ def simulate(params=None):
         s = (H1 - H) / (t1 - t) if t1 > t else 0.0   # dH/dt on this cell
         Bt1 = B * butt(H1, p)
         sb = (Bt1 - Bt) / (t1 - t) if t1 > t else 0.0  # d(buttressing)/dt on this cell
+        Ec = E if (H > 0 or H1 > 0) else 0.0          # glacial erosion only where there is ice
         while True:
             gap = T0 - Dmg + Bt - R                  # >= 0
-            closing = E - sb                            # d(R - T)/dt
+            closing = Ec - sb                           # d(R - T)/dt
             tf = t + gap / closing if closing > 0 else math.inf
             tq = t + (q - acc) / abs(sb) if sb != 0 else math.inf
             tn = min(tf, tq, t1)
             if tn >= t1 - EPS and tf > t1 - EPS and tq > t1 - EPS:
-                acc += abs(sb) * (t1 - t); R += E * (t1 - t); t = t1; H = H1; Bt = Bt1
+                acc += abs(sb) * (t1 - t); R += Ec * (t1 - t); t = t1; H = H1; Bt = Bt1
                 R = min(R, T0 - Dmg + Bt)
                 break
             dt = tn - t
-            acc += abs(sb) * dt; R += E * dt; H += s * dt; Bt += sb * dt; t = tn
+            acc += abs(sb) * dt; R += Ec * dt; H += s * dt; Bt += sb * dt; t = tn
             path.append([t, R]); thr.append([t, T0 - Dmg + Bt])
             if tq <= tf:                                # fracture
                 Told = T0 - Dmg + Bt

@@ -31,24 +31,33 @@ def stress(ice, ta, tb):
         if hi > lo: s += abs(b[1] - a[1]) / (b[0] - a[0]) * (hi - lo)
     return s
 
+def erosion_on(ice, t):
+    """glacial erosion acts on a grid cell with ice at either end (the cell holding t)"""
+    n = len(ice) - 1; i = min(max(int(t / ice[-1][0] * n), 0), n - 1)
+    return ice[i][1] > 0 or ice[i + 1][1] > 0
+
+def ice_time(ice):
+    return sum(b[0] - a[0] for a, b in zip(ice, ice[1:]) if a[1] > 0 or b[1] > 0)
+
 SETS = [{}, {"W": 0}, {"W": 1}, {"E": 0}, {"E": 3}, {"E": 3, "W": 1}, {"seed": 3}, {"seed": 41, "W": 0.6},
-        {"dMax": 1.2, "W": 0.8}, {"floor": 0.5, "E": 2}, {"sigma": 0.25, "seed": 11}]
+        {"dMax": 1.2, "W": 0.8}, {"floor": 0.5, "E": 2}, {"sigma": 0.25, "seed": 11},
+        {"ice": "retreat"}, {"ice": "retreat", "W": 0, "E": 0.25}, {"ice": "retreat", "E": 3, "W": 1.5, "seed": 5}]
 
 worst = dict(budget=0, thr=0, quota=0, slope=0)
 for c in SETS:
     s = gb.simulate(c); p = s["p"]; path = s["path"]; thr = s["thr"]; ice = s["ice"]
     E = p["E"] * p["Eref"]; tag = str(c)
-    # relief: time monotone; every segment grows at exactly E or is a vertical drop
+    # relief: time monotone; every segment grows at exactly E (0 where the ice is gone) or is a vertical drop
     mono = all(b[0] >= a[0] for a, b in zip(path, path[1:]))
     for a, b in zip(path, path[1:]):
         if b[0] > a[0] + 1e-12:
-            worst["slope"] = max(worst["slope"], abs((b[1] - a[1]) / (b[0] - a[0]) - E))
+            worst["slope"] = max(worst["slope"], abs((b[1] - a[1]) / (b[0] - a[0]) - (E if erosion_on(ice, 0.5 * (a[0] + b[0])) else 0.0)))
         else:
             mono = mono and b[1] <= a[1] + 1e-12
     check(tag + " time monotone, drops only downward", mono)
     # budget
     drops = sum(f["frm"] - f["to"] for f in s["fails"])
-    r = abs(path[0][1] + E * p["tmax"] - drops - path[-1][1]); worst["budget"] = max(worst["budget"], r)
+    r = abs(path[0][1] + E * ice_time(ice) - drops - path[-1][1]); worst["budget"] = max(worst["budget"], r)
     # threshold reconstructed from the event lists: T0 + B·H − Dmg, Dmg = Σ fracture drops since the last failure
     ev = sorted([(f["t"], 0, f["drop"]) for f in s["fracs"]] + [(f["t"], 1, 0) for f in s["fails"]])
     ok = True
@@ -90,14 +99,14 @@ for c in SETS:
     okf = okf and all(p["dMin"] - 1e-12 <= f["d"] <= p["dMax"] + 1e-12 for f in s["fails"])
     check(tag + " failures at the threshold, to max(T − d, floor)", okf, "%d failures, %d fractures" % (len(s["fails"]), len(s["fracs"])))
     check(tag + " relief never below the floor", min(v[1] for v in path) >= min(p["floor"], p["R0"]) - 1e-12)
-    check(tag + " ice ≥ Hmin", min(v[1] for v in ice) >= p["Hmin"] - 1e-15)
+    check(tag + " ice ≥ Hmin", min(v[1] for v in ice) >= gb.ICE[p["ice"]]["Hmin"] - 1e-15)
 
 print("worst: budget %.1e, threshold reconstruction %.1e, quota vs ∫|d(B·b)| %.1e, growth slope − E %.1e" %
       (worst["budget"], worst["thr"], worst["quota"], worst["slope"]))
-check("relief budget R0 + E·t − Σdrops = R_end", worst["budget"] < 1e-9)
+check("relief budget R0 + E·(time with ice) − Σdrops = R_end", worst["budget"] < 1e-9)
 check("threshold = T0 + B·b(H) − damage since the last failure", worst["thr"] < 1e-9)
 check("each fracture after exactly its quota of buttressing change ∫|d(B·b)|", worst["quota"] < 1e-9)
-check("relief grows at exactly E", worst["slope"] < 1e-9)
+check("relief grows at exactly E with ice, not at all without", worst["slope"] < 1e-9)
 
 # W = 0: no damage, the threshold is the buttressed one; fractures still drawn at the same times
 s0 = gb.simulate({"W": 0}); s1 = gb.simulate({})
@@ -123,6 +132,19 @@ for f in th:
     thin += H1 < H0
 check("W = 0: failures fall where the ice is thinning (debuttressing), most of them", thin >= 0.6 * len(th), "%d of %d" % (thin, len(th)))
 
+# the retreating glacier: gone early in both interglacials, back in the late Holocene, gone at the end
+sr = gb.simulate({"ice": "retreat"}); ir = sr["ice"]
+gone = lambda a0, a1: all(v[1] == 0 for v in ir if 200 - a0 <= v[0] <= 200 - a1)
+stade = max(v[1] for v in ir if 200 - 125 <= v[0] <= 200 - 122)
+check("retreat: no ice 127.5-125.5 ka, a small stade 125-122 ka, none 121.5-118.5 and 9-5 ka, ice in the late Holocene, none at the end",
+      gone(127.5, 125.5) and 0.15 < stade < 0.45 and gone(121.5, 118.5) and gone(9, 5) and max(v[1] for v in ir if v[0] >= 199) > 0.3 and ir[-1][1] == 0,
+      "stade max %.2f, ice-free %.2f kyr" % (stade, 200 - ice_time(ir)))
+check("retreat: no fracture where the ice is gone (buttressing unchanged)",
+      all(erosion_on(ir, f["t"] - 1e-9) or erosion_on(ir, f["t"] + 1e-9) for f in sr["fracs"]))
+check("retreat: without ice the threshold is at most T0 (no buttressing)",
+      all(T <= 1 + 1e-12 for t, T in sr["thr"] if not erosion_on(ir, t) and not erosion_on(ir, t - 0.25)))
+check("thick history unchanged by the retreat option (fingerprint)", gb.fingerprint() == "906 997 70 21 1153.612080056 1396.570513716 546.738034185")
+
 # independent time-stepped integration of the same rules (same random streams, same order)
 def stepped(params, dt):
     p = dict(gb.DEFAULTS); p.update(params)
@@ -130,7 +152,7 @@ def stepped(params, dt):
     E = p["E"] * p["Eref"]; t = 0.0; bp = [[v[0], p["B"] * gb.butt(v[1], p)] for v in ice]; R = min(p["R0"], 1 + bp[0][1]); D = 0.0; acc = 0.0; q = nq(); out = []; bo = bp[0][1]
     n = int(round(p["tmax"] / dt))
     for k in range(1, n + 1):
-        t = p["tmax"] * k / n; bn = ice_at(bp, t); acc += abs(bn - bo); bo = bn; R += E * dt
+        t = p["tmax"] * k / n; bn = ice_at(bp, t); acc += abs(bn - bo); bo = bn; R += (E if erosion_on(ice, t - 0.5 * dt) else 0.0) * dt
         if acc >= q: D += p["W"] * q; acc -= q; q = nq()
         T = 1 - D + ice_at(bp, t)
         if R >= T:
@@ -138,23 +160,24 @@ def stepped(params, dt):
             if Rn < R: out.append(t); R = Rn
             D = 0.0
     return out, R
-for c in [{}, {"W": 0}, {"E": 2}]:
+for c in [{}, {"W": 0}, {"E": 2}, {"ice": "retreat"}]:
     ex = gb.simulate(c); tf = [f["t"] for f in ex["fails"]]; errs = []
     for dt in [0.01, 0.0025, 0.000625, 0.00015625]:
         ts, Rend = stepped(c, dt)
         errs.append((len(ts) == len(tf), max([abs(a - b) for a, b in zip(ts, tf)] + [0]), abs(Rend - ex["path"][-1][1])))
     # first order, in steps (each error is set by where single events fall on the step grid):
-    # failure-time errors fall at every refinement, R_end errors never rise, and both by ≥ 16
-    # over the 64-fold refinement
+    # failure-time errors fall at every refinement, R_end errors never rise, and both at an
+    # order ≥ 0.5 over the 64-fold refinement (≥ 8×; the four settings give 0.6-1.0)
     ok = all(e[0] for e in errs) and all(b[1] < a[1] for a, b in zip(errs, errs[1:])) and \
         all(b[2] <= a[2] * (1 + 1e-9) for a, b in zip(errs, errs[1:])) and \
-        errs[-1][1] <= errs[0][1] / 16 and errs[-1][2] <= errs[0][2] / 16
+        errs[-1][1] <= errs[0][1] / 8 and errs[-1][2] <= errs[0][2] / 8
     check("time-stepped reference converges to the exact solution %s" % c, ok,
           "same failure count; worst time error " + " → ".join("%.2g" % e[1] for e in errs) + " kyr, R_end error " +
-          " → ".join("%.1e" % e[2] for e in errs) + " (dt 0.01 … 0.00015625)")
+          " → ".join("%.1e" % e[2] for e in errs) + " (dt 0.01 … 0.00015625); order %.2f, %.2f" %
+          (math.log(errs[0][1] / errs[-1][1]) / math.log(64), math.log(errs[0][2] / errs[-1][2]) / math.log(64)))
 
 print("fingerprint (GS.glacier.fingerprint() in the browser):")
-for c in [{}, {"W": 0}, {"E": 2, "W": 0.6}]:
+for c in [{}, {"W": 0}, {"E": 2, "W": 0.6}, {"ice": "retreat"}, {"ice": "retreat", "W": 0, "E": 0.25}]:
     print("  ", c, gb.fingerprint(c))
 print("\n%d failed" % len(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)

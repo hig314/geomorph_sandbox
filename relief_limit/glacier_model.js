@@ -9,9 +9,12 @@
  *
  *   ice         H(t) = max(Hmin, envelope(t) + fluctuation(t)), a polyline on a dtH grid.
  *               envelope: glacial (MIS 6) – interglacial (MIS 5e) – glacial (to the LGM) –
- *               interglacial (Holocene), piecewise linear through ICE_KEYS; never zero, so
- *               ice is present throughout. fluctuation: internal dynamics, seeded, knots every
- *               1.5–4 kyr with Gaussian values σ·(0.4 + 0.6·envelope), cosine-interpolated
+ *               interglacial (Holocene), piecewise linear through the keys of the ice history
+ *               p.ice: "thick" (ICE_KEYS) never zero, so ice is present throughout; "retreat"
+ *               (RETREAT_KEYS) gone early in both interglacials, re-advancing in the late
+ *               Holocene, gone at the end. fluctuation: internal dynamics, seeded, knots every
+ *               1.5–4 kyr with Gaussian values σ·(0.4 + 0.6·envelope)·min(1, envelope/taper)
+ *               (no taper for "thick"), cosine-interpolated
  *   threshold   T(t) = T0 − Dmg + B·b(t)
  *               buttressing  b = (1 − e^(−H/Hs)) / (1 − e^(−1/Hs)), Hs = 0.3, B fixed, at the
  *                            nodes of the ice polyline, linear between them: saturating, so the
@@ -21,7 +24,8 @@
  *                            q = qMean·(1 + qJit·(2u − 1)) (u uniform, its own stream) the rock
  *                            fractures: Dmg += W·q, a step down in T
  *               a landslide removes the damaged rock: Dmg ← 0
- *   relief      dR/dt = E (glacial erosion, constant: ice is present the whole time)
+ *   relief      dR/dt = E where there is ice (glacial erosion, constant), 0 on an ice-free grid
+ *               cell (H = 0 at both ends); with "thick" ice is present the whole time
  *   failure     where R reaches T (erosion, or T falling as the ice thins) or a fracture steps
  *               T to or below R:  R ← max(T − d, floor), then Dmg ← 0; d from a truncated
  *               power law on [dMin, dMax] (its own stream, as model.js)
@@ -44,6 +48,16 @@
                   [135, 0.93], [129, 0.41], [117, 0.38], [110, 0.57], [103, 0.50], [92, 0.64],
                   [85, 0.57], [70, 0.73], [60, 0.79], [50, 0.71], [35, 0.76], [24, 1.00],
                   [19, 0.94], [11, 0.40], [0.6, 0.38], [0, 0.04]];
+  // The same glacials, but the glacier retreats completely early in both interglacials: gone by
+  // 128 ka, back briefly in a small stade (125–122 ka, to 0.28 at 123.5 ka), gone again until it
+  // re-advances from 118 ka, gone by 10 ka until a late-Holocene re-advance from
+  // 4.5 ka to a maximum at 0.3 ka (Little Ice Age), then the final retreat.
+  var RETREAT_KEYS = [[200, 0.65], [186, 0.73], [176, 0.69], [160, 0.80], [148, 0.86], [140, 0.97],
+                      [135, 0.93], [128, 0], [125, 0], [123.5, 0.28], [122, 0], [118, 0], [110, 0.50], [103, 0.45], [92, 0.62],
+                      [85, 0.55], [70, 0.73], [60, 0.79], [50, 0.71], [35, 0.76], [24, 1.00],
+                      [19, 0.94], [10, 0], [4.5, 0], [0.3, 0.45], [0, 0]];
+  var ICE = { thick: { keys: ICE_KEYS, Hmin: 0.05, taper: 0 },
+              retreat: { keys: RETREAT_KEYS, Hmin: 0, taper: 0.15 } };
 
   var DEFAULTS = {
     tmax: 200,     // kyr
@@ -51,7 +65,7 @@
     T0: 1,         // intact threshold with no ice
     B: 0.5,        // buttressing at the largest thickness (fixed)
     Hs: 0.3,       // saturation thickness of buttressing: stretched for thin ice, compressed for thick
-    Hmin: 0.05,    // thinnest ice
+    ice: "thick",  // ice history: "thick" or "retreat" (ICE)
     sigma: 0.09,   // amplitude of the internal fluctuations
     E: 1,          // erosion, as a multiple of Eref
     Eref: 0.012,   // relief per kyr at E = 1
@@ -69,17 +83,18 @@
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
 
-  function envelope(t, tmax) {
+  function envelope(t, tmax, keys) {
     var a = tmax - t, i, a0, a1;
-    for (i = 0; i + 1 < ICE_KEYS.length; i++) {
-      a0 = ICE_KEYS[i][0]; a1 = ICE_KEYS[i + 1][0];
-      if (a <= a0 && a >= a1) return ICE_KEYS[i][1] + (ICE_KEYS[i + 1][1] - ICE_KEYS[i][1]) * (a0 - a) / (a0 - a1);
+    keys = keys || ICE_KEYS;
+    for (i = 0; i + 1 < keys.length; i++) {
+      a0 = keys[i][0]; a1 = keys[i + 1][0];
+      if (a <= a0 && a >= a1) return keys[i][1] + (keys[i + 1][1] - keys[i][1]) * (a0 - a) / (a0 - a1);
     }
-    return a < ICE_KEYS[ICE_KEYS.length - 1][0] ? ICE_KEYS[ICE_KEYS.length - 1][1] : ICE_KEYS[0][1];
+    return a < keys[keys.length - 1][0] ? keys[keys.length - 1][1] : keys[0][1];
   }
 
   function makeIce(p) {
-    var rnd = GS.noise.mulberry32(p.seed | 0), tmax = p.tmax, kt = [-2 * rnd()], kv = [], i, j = 0, n, t, s, w, env, fl, out = [];
+    var rnd = GS.noise.mulberry32(p.seed | 0), sc = ICE[p.ice], tmax = p.tmax, kt = [-2 * rnd()], kv = [], i, j = 0, n, t, s, w, env, amp, out = [];
     while (kt[kt.length - 1] <= tmax) kt.push(kt[kt.length - 1] + 1.5 + 2.5 * rnd());
     for (i = 0; i < kt.length; i++) kv.push(gauss(rnd));
     n = Math.round(tmax / p.dtH);
@@ -87,9 +102,9 @@
       t = tmax * i / n;
       while (j + 2 < kt.length && kt[j + 1] <= t) j++;
       s = (t - kt[j]) / (kt[j + 1] - kt[j]); w = 0.5 - 0.5 * Math.cos(Math.PI * s);
-      env = envelope(t, tmax);
-      fl = p.sigma * (0.4 + 0.6 * env) * (kv[j] + (kv[j + 1] - kv[j]) * w);
-      out.push([t, Math.max(p.Hmin, env + fl)]);
+      env = envelope(t, tmax, sc.keys);
+      amp = p.sigma * (0.4 + 0.6 * env) * (sc.taper > 0 ? Math.min(1, env / sc.taper) : 1);
+      out.push([t, Math.max(sc.Hmin, env + amp * (kv[j] + (kv[j + 1] - kv[j]) * w))]);
     }
     return out;
   }
@@ -116,7 +131,7 @@
     var Dmg = 0, acc = 0, q = nextQ(), t = 0, H = ice[0][1], Bt = B * butt(H, p), Bt1, sb;
     var R = Math.min(p.R0, T0 + Bt);
     var path = [[t, R]], thr = [[t, T0 + Bt]], fracs = [], fails = [];
-    var i, t1, H1, s, gap, closing, tf, tq, tn, dt, Told;
+    var i, t1, H1, s, Ec, gap, closing, tf, tq, tn, dt, Told;
 
     function fail(cause) {
       var T = T0 - Dmg + Bt, d = nextD(), Rn = Math.max(T - d, floor);
@@ -132,19 +147,20 @@
       s = t1 > t ? (H1 - H) / (t1 - t) : 0;       // dH/dt on this cell
       Bt1 = B * butt(H1, p);
       sb = t1 > t ? (Bt1 - Bt) / (t1 - t) : 0;   // d(buttressing)/dt on this cell
+      Ec = H > 0 || H1 > 0 ? E : 0;              // glacial erosion only where there is ice
       for (;;) {
         gap = T0 - Dmg + Bt - R;                // ≥ 0
-        closing = E - sb;                          // d(R − T)/dt
+        closing = Ec - sb;                         // d(R − T)/dt
         tf = closing > 0 ? t + gap / closing : Infinity;
         tq = sb !== 0 ? t + (q - acc) / Math.abs(sb) : Infinity;
         tn = Math.min(tf, tq, t1);
         if (tn >= t1 - EPS && tf > t1 - EPS && tq > t1 - EPS) {
-          acc += Math.abs(sb) * (t1 - t); R += E * (t1 - t); t = t1; H = H1; Bt = Bt1;
+          acc += Math.abs(sb) * (t1 - t); R += Ec * (t1 - t); t = t1; H = H1; Bt = Bt1;
           R = Math.min(R, T0 - Dmg + Bt);
           break;
         }
         dt = tn - t;
-        acc += Math.abs(sb) * dt; R += E * dt; H += s * dt; Bt += sb * dt; t = tn;
+        acc += Math.abs(sb) * dt; R += Ec * dt; H += s * dt; Bt += sb * dt; t = tn;
         path.push([t, R]); thr.push([t, T0 - Dmg + Bt]);
         if (tq <= tf) {                            // fracture
           Told = T0 - Dmg + Bt;
@@ -182,5 +198,5 @@
       sp.toFixed(9) + " " + st.toFixed(9) + " " + si.toFixed(9);
   }
 
-  GS.glacier = { DEFAULTS: DEFAULTS, ICE_KEYS: ICE_KEYS, butt: butt, simulate: simulate, makeIce: makeIce, valueAt: valueAt, fingerprint: fingerprint };
+  GS.glacier = { DEFAULTS: DEFAULTS, ICE_KEYS: ICE_KEYS, ICE: ICE, butt: butt, simulate: simulate, makeIce: makeIce, valueAt: valueAt, fingerprint: fingerprint };
 })(typeof window !== "undefined" ? window : this);

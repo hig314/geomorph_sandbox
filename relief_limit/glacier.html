@@ -51,7 +51,8 @@
       over the last two glacial cycles, with the ice thickness below. The ice raises the threshold,
       most sensitively where it is thin and hardly more as it thickens (buttressing, saturating); each change in
       buttressing fractures the rock and steps the threshold down in small, regular steps (weakening); glacial erosion raises relief at a constant
-      rate. Two sliders (weakening, erosion rate) sit inside the 16:9 frame; everything below the
+      rate wherever there is ice. Two glacier histories: thick (always present) or retreating (gone early in both
+      interglacials, back in the late Holocene, then gone; <code>?ice=retreat</code>). Two sliders (weakening, erosion rate) sit inside the 16:9 frame; everything below the
       frame is presenter's notes. Hover any <span class="tip-glyph">ⓘ</span> or line for the rule behind it.
     </p>
     <nav class="tiers">
@@ -72,7 +73,7 @@
 
   <footer>
     <code>T = T<sub>0</sub> + B·b(H) − D</code>: buttressing <code>b = (1 − e<sup>−H/H<sub>s</sub></sup>) / (1 − e<sup>−1/H<sub>s</sub></sup>)</code>, <code>H<sub>s</sub> = 0.3</code>; a fracture when the change in buttressing <code>∫|d(B·b)|</code> since the last one reaches a quota <code>q = 0.025 ± 25 %</code>, then <code>D ← D + W·q</code>;
-    relief <code>dR/dt = E</code>; failure where <code>R = T</code>, then <code>R ← T − d</code> and <code>D ← 0</code>. Exact between events (the ice is a 0.25 kyr polyline), relief in units of the ice-free
+    relief <code>dR/dt = E</code> with ice, 0 without; failure where <code>R = T</code>, then <code>R ← T − d</code> and <code>D ← 0</code>. Exact between events (the ice is a 0.25 kyr polyline), relief in units of the ice-free
     threshold T<sub>0</sub>, time in kyr. Model in <code>relief_limit/glacier_model.js</code> (no DOM); validated in <code>py/test_glacier_buttress.py</code>. Methods: <code>docs/relief_limit.md</code>.
   </footer>
 

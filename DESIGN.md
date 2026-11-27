@@ -263,9 +263,12 @@ thin ice, compressed for thick); each change in buttressing fractures the rock i
 regular steps (Weakening slider); glacial erosion raises relief at a constant rate (Erosion
 rate slider). Fracture steps drawn solid, black and thick (2026-11-27); the ice is thick
 (interglacials keep ~40 %) and plunges in the last 600 years (climate change). Starts at relief 1.3 T0, held up by the ice; at erosion × 0.25 and no weakening
-relief builds through the glacials. Exact event model, Python mirror and 80
-checks; rules and choices in `docs/relief_limit.md`. Wanted in the deck at slide 42; not
-yet placed there (2026-11-26).
+relief builds through the glacials. Exact event model, Python mirror and 103
+checks; rules and choices in `docs/relief_limit.md`. A second glacier history, `?ice=retreat`
+(2026-11-27): gone early in both interglacials (a small stade in the last one), re-advancing
+in the late Holocene, then gone;
+no erosion and no buttressing while the ice is gone. On production `gc_outline_43` since 2026-11-27:
+slide 42 the thick history, slide 44 the retreating one.
 
 ### The deck
 
