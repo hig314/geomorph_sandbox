@@ -177,33 +177,54 @@ for c in [{}, {"W": 0}, {"E": 2}, {"ice": "retreat"}]:
           (math.log(errs[0][1] / errs[-1][1]) / math.log(64), math.log(errs[0][2] / errs[-1][2]) / math.log(64)))
 
 # ---- the cross-section (glacial trough) -------------------------------------------------
-wm = wr = 0.0; ok_mono = ok_ridge = ok_above = ok_ice = ok_lens = ok_trough = True; nls = 0
-for c in SETS:
+S = gb.SEC_S
+wr = wd = wc = 0.0; ok_mono = ok_rm = ok_scarp = ok_steep = ok_ice = ok_lens = ok_trough = ok_bed = ok_cut = True; nls = 0; removed = 0.0
+for c in SETS + [{"ice": "retreat", "W": 3}, {"W": 3, "E": 3}, {"R0": 0.2}]:
     s = gb.simulate(c); states = gb.section_states(s); C = gb.sec_C(s["p"])
     for k in range(1, len(states)):
         pre, rel = states[k]["pre"], states[k]["rel"]; f = [f for f in s["fails"] if f["t"] == states[k]["t"] and f["frm"] - f["to"] > gb.EPS][0]
-        nls += 1
-        wm = max(wm, abs(gb.sec_area(pre) - gb.sec_area(rel)))                        # cut = fill
+        nls += 1; removed += gb.sec_area(pre) - gb.sec_area(rel)
         wr = max(wr, abs(pre[-1][1] - pre[0][1] - f["frm"]), abs(rel[-1][1] - rel[0][1] - f["to"]))
-        ok_ridge = ok_ridge and rel[-1][1] <= pre[-1][1] + 1e-12 and rel[0][1] >= pre[0][1] - 1e-12
-        # outside the cut/fill line the old surface is kept: every vertex is on it, or is the new floor or ridge
-        ok_above = ok_above and all(abs(gb.sec_value(pre, v[0]) - v[1]) < 1e-12 or v[0] in (0.0, 1.0) for v in rel)
-    for t in [0.0, 3.7, 29.9, 64.2, 101.9, 123.4, 150.05, 171.3, 188.8, 199.9, 200.0]:
-        sec = gb.section_at(s, states, t); p = sec["pts"]
-        wr = max(wr, abs(p[-1][1] - p[0][1] - sec["R"]), abs(gb.sec_area(p)))         # relief = R(t); datum = mean
+        wc = max(wc, abs(rel[0][1] - pre[0][1]), abs((pre[-1][1] - rel[-1][1]) - (f["frm"] - f["to"])))   # floor kept, crest down by R - R'
+        xs = sorted(set([v[0] for v in pre] + [v[0] for v in rel]))
+        ok_rm = ok_rm and all(gb.sec_value(rel, x) <= gb.sec_value(pre, x) + 1e-12 for x in xs)           # only removes rock
+        # where rock was removed, the new surface is the failure plane (slope S) or the floor
+        zc, zf = rel[-1][1], rel[0][1]
+        # the cut is one stretch, from x_cut to the crest; below x_cut nothing changes
+        xc = states[k]["xcut"]
+        ok_cut = ok_cut and all((gb.sec_value(rel, x) < gb.sec_value(pre, x) - 1e-12) == (x > xc + 1e-12) or abs(gb.sec_value(rel, x) - gb.sec_value(pre, x)) < 1e-12 and x > xc for x in xs) \
+            and states[k]["ghost"][0][0] == xc and states[k]["ghost"][-1] == pre[-1]
+        ok_scarp = ok_scarp and all(abs(gb.sec_value(rel, x) - max(zf, zc - S * (1 - x))) < 1e-12
+                                    for x in xs if gb.sec_value(rel, x) < gb.sec_value(pre, x) - 1e-12)
+    for t in [0.0, 3.7, 29.9, 64.2, 78.0, 90.0, 101.9, 123.4, 150.05, 171.3, 188.8, 199.9, 200.0]:
+        sec = gb.section_at(s, states, t); p = sec["pts"]; zf, zc = p[0][1], p[-1][1]
+        wr = max(wr, abs(zc - zf - sec["R"])); wd = max(wd, abs(zf + gb.SEC_DATUM * C))                            # relief = R(t); datum = floor
         ok_mono = ok_mono and all(b[0] > a[0] and b[1] >= a[1] - 1e-12 for a, b in zip(p, p[1:])) and p[0][0] == 0 and p[-1][0] == 1
+        # every slope is the failure slope or steeper, a flat floor, or the foot of the glacier's U
+        tr = gb.sec_trough(zf, max(C, sec["R"]))
+        for a, b in zip(p, p[1:]):
+            sl = (b[1] - a[1]) / (b[0] - a[0])
+            if 1e-9 < sl < S - 1e-9:
+                ok_steep = ok_steep and abs(a[1] - gb.sec_value(tr, a[0])) < 1e-12 and abs(b[1] - gb.sec_value(tr, b[0])) < 1e-12
+        # the glacier's bed is smooth at the valley centre (no notch): flat, or the U's first chord
+        ok_bed = ok_bed and (p[1][1] - p[0][1]) / p[1][0] <= C / gb.SEC_N + 1e-9
         # carving only removes rock: the surface is never above the one the last landslide left
         kk = max(j for j in range(len(states)) if states[j]["t"] <= t); cur = gb.sec_surface(states[kk]["rel"], sec["R"], C)
         ok_trough = ok_trough and all(v[1] <= gb.sec_value(states[kk]["rel"], v[0]) + 1e-12 for v in cur)
-        ok_ice = ok_ice and abs(sec["zIce"] - p[0][1] - gb.SEC_ICE * C * sec["H"]) < 1e-12 and (sec["H"] > 0 or sec["zIce"] == p[0][1])
+        ok_ice = ok_ice and abs(sec["zIce"] - zf - min(gb.SEC_ICE * C * sec["H"], gb.SEC_CAP * sec["R"])) < 1e-12 \
+            and (sec["H"] > 0 or sec["zIce"] == zf) and sec["zIce"] < zc
         ok_lens = ok_lens and 0 <= sec["weak"] < 1 and (c.get("W", 1) != 0 or sec["weak"] < 1e-12)
-check("section: every landslide conserves area (cut = fill)", wm < 1e-12, "%d landslides, worst %.1e" % (nls, wm))
-check("section: floor-to-ridge height = R(t) before and after every landslide and at sampled times; mean elevation is the datum", wr < 1e-9, "worst %.1e" % wr)
-check("section: surface rises from the valley centre to the ridge", ok_mono)
+check("section: floor-to-crest height = R(t) before and after every landslide and at sampled times", wr < 1e-9, "worst %.1e" % wr)
+check("section: the floor is the datum (drawn at -0.45·C)", wd < 1e-12, "worst %.1e" % wd)
+check("section: a landslide keeps the floor and lowers the crest by exactly R - R'", wc < 1e-9, "%d landslides, worst %.1e" % (nls, wc))
+check("section: a landslide only removes rock", ok_rm and removed > 0, "area removed in all, %.3f" % removed)
+check("section: where a landslide removed rock, the surface is the failure plane (slope S) or the floor", ok_scarp)
+check("section: a landslide cuts one stretch, from where the plane meets the wall to the crest; the bed below is kept", ok_cut)
+check("section: every slope is the failure slope or steeper, a flat floor, or the foot of the U", ok_steep)
+check("section: surface rises from the valley centre to the crest", ok_mono)
+check("section: the bed at the valley centre is flat or the U (no notch)", ok_bed)
 check("section: carving only removes rock (never above the surface the last landslide left)", ok_trough)
-check("section: a landslide never raises the ridge nor lowers the floor", ok_ridge)
-check("section: outside the cut/fill line the old surface is unchanged", ok_above)
-check("section: ice fills the trough to 0.6·C·H above the floor; none when the glacier is gone", ok_ice)
+check("section: ice to min(0.6·C·H, 0.9·R) above the floor, below the crest; none when the glacier is gone", ok_ice)
 check("section: damage lens 0 ≤ D/T_intact < 1, and 0 with no weakening", ok_lens)
 print("section fingerprint (GS.glacier.sectionFingerprint() in the browser):")
 for c in [{}, {"ice": "retreat"}, {"ice": "retreat", "W": 0, "E": 0.25}]:

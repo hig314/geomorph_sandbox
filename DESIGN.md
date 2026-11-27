@@ -261,9 +261,9 @@ under a dynamic glacier through two glacial cycles, ice thickness in a thin pane
 Buttressing raises the threshold on a saturating curve of ice thickness, fixed (stretched for
 thin ice, compressed for thick); each change in buttressing fractures the rock in small,
 regular steps (Weakening slider); glacial erosion raises relief at a constant rate (Erosion
-rate slider). Fracture steps drawn solid, black and thick (2026-11-27); the ice is thick
+rate slider). Fracture steps drawn solid and black, round-capped (2026-11-27); the ice is thick
 (interglacials keep ~40 %) and plunges in the last 600 years (climate change). Starts at relief 1.3 T0, held up by the ice; at erosion × 0.25 and no weakening
-relief builds through the glacials. Exact event model, Python mirror and 111
+relief builds through the glacials. Exact event model, Python mirror and 115
 checks; rules and choices in `docs/relief_limit.md`. A second glacier history, `?ice=retreat`
 (2026-11-27): gone early in both interglacials (a small stade in the last one), re-advancing
 in the late Holocene, then gone;

@@ -189,26 +189,29 @@
   }
 
   // ---- The cross-section: a glacial trough read from the same history ---------------------
-  // A half-section z(x), valley centre at x = 0, ridge at x = 1 (x in units of the half-spacing,
-  // z in units of T0), mirrored about the centre and the ridge when drawn. As the relief
-  // figure's ridge–valley section (model.js), with the limiting slope a U, not a straight line:
-  //   incision    the glacier cuts the floor down and a parabolic trough z_valley + C·x² (C the
+  // A half-section z(x), valley centre at x = 0, crest at x = 1 (x in units of the half-spacing,
+  // z in units of T0), mirrored about the centre and the crest when drawn. Two shapes, and the
+  // surface is the lower of them: a U cut by the glacier from the floor up, and a straight slope
+  // left by landslides from the crest down.
+  //   incision    the glacier cuts the floor down and a parabolic trough z_floor + C·x² (C the
   //               highest threshold, T0 + B: a full trough stands at it) climbs from it; above
   //               where it meets the older surface, that surface is untouched:
-  //               z(x) = min(relict(x), z_valley + C·x²),  z_valley = z_ridge − R(t)
-  //               (the parabola as a polyline on SEC_N cells; the min is exact for polylines)
-  //   landslide   R → R′: the surface becomes a straight line of equal area (cut = fill), valley
-  //               centre to ridge. If that line would stand above the old ridge, the ridge stays,
-  //               the floor rises by R − R′, and the line ends at the point x2 of the old surface
-  //               where cut = fill. If it would pass below the old floor (a small failure on a U,
-  //               whose floor is low and wide), the floor stays, the ridge comes down by R − R′,
-  //               and the line starts at the point x1 of the old wall where cut = fill: the
-  //               debris stops on the wall
-  //   ice         the glacier fills the trough to SEC_ICE·C·H(t) above the floor, flat-topped
-  //   weakening   damage D / T_intact, drawn as a lens under the wall (glacier_app.js)
-  //   datum       drawn about the mean elevation of the section, which a landslide conserves
+  //               z(x) = min(relict(x), z_floor + C·x²),  z_floor = z_crest − R(t)
+  //               (the parabola as a polyline on SEC_N cells; the min is exact for polylines).
+  //               The U climbs the wall as the floor goes down: the glacier oversteepens the wall
+  //   landslide   R → R′: the crest comes down by R − R′ and the floor stays. The failure surface
+  //               is a plane from the new crest down at the fixed slope SEC_S, not below the floor:
+  //               z(x) = min(old(x), max(z_floor, z_crest′ − SEC_S·(1 − x)))  for x ≥ x_cut,
+  //               x_cut the highest point where the plane meets the old surface; old(x) below it
+  //               A slab off the upper wall, however large the drop: the wall is never gentler
+  //               than SEC_S, and a drop to R′ < SEC_S leaves a flat floor at the wall's foot. The
+  //               debris is not kept in the section (it lands on the glacier and is carried away)
+  //   ice         the glacier fills the trough to min(SEC_ICE·C·H(t), SEC_CAP·R) above the floor,
+  //               flat-topped: never over the crest
+  //   weakening   damage D / T_intact, drawn as a lens under the upper wall (glacier_app.js)
+  //   datum       the floor: drawn at −SEC_DATUM·C, so a full trough is about centred
   // Mirrored in py/glacier_buttress.py and checked there. Nothing here feeds back on R(t).
-  var SEC_N = 32, SEC_ICE = 0.6;
+  var SEC_N = 32, SEC_ICE = 0.6, SEC_CAP = 0.9, SEC_S = 1.0, SEC_DATUM = 0.45;
 
   function secArea(poly, xTo) {
     var a = 0, i, p0, p1, zc;
@@ -263,58 +266,52 @@
     if (rel[0][1] - zv <= EPS) return rel.map(function (v) { return v.slice(); });
     return secMin(rel, secTrough(zv, Math.max(C, R)));
   }
+  // max(zf, zc − SEC_S·(1 − x)) on [0, 1]: the failure plane from the crest, not below the floor
+  function secPlane(zc, zf) {
+    if (zc - SEC_S >= zf) return [[0, zc - SEC_S], [1, zc]];
+    return [[0, zf], [1 - (zc - zf) / SEC_S, zf], [1, zc]];
+  }
+  // {rel, xcut}: rock above the failure plane is removed from xcut to the crest, where xcut is
+  // the highest point at which the plane meets the old surface; below it the old surface is
+  // kept (the glacier's bed is not touched unless the plane reaches the floor).
   function secLandslide(cur, Rn) {
-    var zr = cur[cur.length - 1][1], z0 = cur[0][1], A = secArea(cur), a = A - 0.5 * Rn, lo = 0, hi = 1, mid, it, zt, x1, x2, out, i;
-    if (a < z0) {                                   // floor kept, ridge down: line from x1 on the wall
-      zt = z0 + Rn;
-      for (it = 0; it < 60; it++) {
-        mid = 0.5 * (lo + hi);
-        if ((1 - mid) * 0.5 * (secValue(cur, mid) + zt) - (A - secArea(cur, mid)) > 0) lo = mid; else hi = mid;
-      }
-      x1 = 0.5 * (lo + hi); out = [];
-      for (i = 0; i < cur.length; i++) if (cur[i][0] < x1 - 1e-9) out.push(cur[i].slice());
-      out.push([x1, secValue(cur, x1)]); out.push([1, zt]);
-      return out;
-    }
-    if (a + Rn <= zr + EPS) return [[0, a], [1, a + Rn]];
-    a = zr - Rn;                                    // ridge kept, floor up: line to x2 on the old surface
-    for (it = 0; it < 60; it++) {
-      mid = 0.5 * (lo + hi);
-      if (mid * 0.5 * (a + secValue(cur, mid)) - secArea(cur, mid) > 0) lo = mid; else hi = mid;
-    }
-    x2 = 0.5 * (lo + hi);
-    out = [[0, a], [x2, secValue(cur, x2)]];
-    for (i = 0; i < cur.length; i++) if (cur[i][0] > x2 + 1e-9) out.push(cur[i].slice());
-    return out;
+    var zf = cur[0][1], nw = secMin(cur, secPlane(zf + Rn, zf)), i = nw.length - 1, xc, out = [], j;
+    while (i > 0 && nw[i][1] < secValue(cur, nw[i][0]) - 1e-12) i--;
+    xc = nw[i][0];
+    for (j = 0; j < cur.length; j++) if (cur[j][0] < xc - 1e-12) out.push(cur[j].slice());
+    return { rel: out.concat(nw.slice(i)), xcut: xc };
   }
   function secC(p) { return p.T0 + p.B; }
-  // [{t, rel, pre}]: the relict surface from each landslide on, from a flat surface at t = 0.
+  // [{t, rel, pre}]: the relict surface from each landslide on; at t = 0 a crest at 0 with the
+  // failure slope below it, floor at −R0.
   function sectionStates(sim) {
-    var C = secC(sim.p), rel = [[0, 0], [1, 0]], out = [{ t: 0, rel: rel, pre: null }], i, f, cur;
+    var C = secC(sim.p), rel = secPlane(0, -sim.p.R0), out = [{ t: 0, rel: rel, pre: null, ghost: null }], i, f, cur, ls, g, j;
     for (i = 0; i < sim.fails.length; i++) {
       f = sim.fails[i];
       if (f.from - f.to <= EPS) continue;
-      cur = secSurface(rel, f.from, C); rel = secLandslide(cur, f.to);
-      out.push({ t: f.t, rel: rel, pre: cur });
+      cur = secSurface(rel, f.from, C); ls = secLandslide(cur, f.to); rel = ls.rel;
+      g = [[ls.xcut, secValue(cur, ls.xcut)]];             // ghost: the part of the old surface that failed
+      for (j = 0; j < cur.length; j++) if (cur[j][0] > ls.xcut + 1e-12) g.push(cur[j].slice());
+      out.push({ t: f.t, rel: rel, pre: cur, xcut: ls.xcut, ghost: g });
     }
     return out;
   }
-  // The section at time t: pts (about its mean elevation), relief R, the surface the last
+  // The section at time t: pts (floor at −SEC_DATUM·C), relief R, the surface the last
   // landslide failed from (ghost, same datum) and the time since (age), the damage standing in
   // the rock as a fraction of the intact threshold (weak), the ice H and its level zIce.
   function sectionAt(sim, states, t) {
     var p = sim.p, C = secC(p), k = 0, st, R, cur, m, ice = sim.ice, n = ice.length - 1, i, ba, bb, Ti, H, pts;
     while (k + 1 < states.length && states[k + 1].t <= t) k++;
     st = states[k]; R = valueAt(sim.path, t);
-    cur = secSurface(st.rel, R, C); m = secArea(cur);
+    cur = secSurface(st.rel, R, C); m = cur[0][1] + SEC_DATUM * C;
     function shift(v) { return [v[0], v[1] - m]; }
     pts = cur.map(shift);
     i = Math.min(Math.max(Math.floor(t / p.dtH), 0), n - 1);
     ba = p.B * butt(ice[i][1], p); bb = p.B * butt(ice[i + 1][1], p);
     Ti = p.T0 + ba + (bb - ba) * (t - ice[i][0]) / (ice[i + 1][0] - ice[i][0]);
     H = valueAt(ice, t);
-    return { pts: pts, R: R, ghost: st.pre ? st.pre.map(shift) : null, age: t - st.t,
-             weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + SEC_ICE * C * H };
+    return { pts: pts, R: R, ghost: st.ghost ? st.ghost.map(shift) : null, age: t - st.t,
+             weak: Math.max(0, (Ti - valueAt(sim.thr, t)) / Ti), H: H, zIce: pts[0][1] + Math.min(SEC_ICE * C * H, SEC_CAP * R) };
   }
   // Same line as py/glacier_buttress.py section_fingerprint() prints.
   function sectionFingerprint(extra) {
@@ -323,6 +320,7 @@
       var sec = sectionAt(s, states, t), pts = sec.pts, sum = 0, i;
       for (i = 0; i < pts.length; i++) sum += Math.abs(pts[i][1]) + pts[i][0];
       out += " " + sum.toFixed(9) + " " + pts.length + " " + (sec.zIce + sec.weak).toFixed(9);
+      out += " " + (sec.ghost ? sec.ghost.length : 0);
     });
     return out;
   }
@@ -338,5 +336,5 @@
   }
 
   GS.glacier = { DEFAULTS: DEFAULTS, ICE_KEYS: ICE_KEYS, ICE: ICE, butt: butt, simulate: simulate, makeIce: makeIce, valueAt: valueAt, fingerprint: fingerprint,
-                 sectionStates: sectionStates, sectionAt: sectionAt, sectionFingerprint: sectionFingerprint, SEC_ICE: SEC_ICE };
+                 sectionStates: sectionStates, sectionAt: sectionAt, sectionFingerprint: sectionFingerprint, SEC_ICE: SEC_ICE, SEC_S: SEC_S };
 })(typeof window !== "undefined" ? window : this);

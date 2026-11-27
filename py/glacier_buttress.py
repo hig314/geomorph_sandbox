@@ -181,27 +181,33 @@ def simulate(params=None):
 
 
 # ---- The cross-section: a glacial trough read from the same history -------------------------
-# A half-section z(x), valley centre at x = 0, ridge at x = 1 (x in units of the half-spacing,
-# z in units of T0), mirrored about the centre and the ridge when drawn. As the relief figure's
-# ridge-valley section (relief_limit.py), with the limiting slope a U, not a straight line:
-#   incision    the glacier cuts the floor down and a parabolic trough z_valley + C*x^2 (C the
+# A half-section z(x), valley centre at x = 0, crest at x = 1 (x in units of the half-spacing,
+# z in units of T0), mirrored about the centre and the crest when drawn. Two shapes, and the
+# surface is the lower of them: a U cut by the glacier from the floor up, and a straight slope
+# left by landslides from the crest down.
+#   incision    the glacier cuts the floor down and a parabolic trough z_floor + C*x^2 (C the
 #               highest threshold, T0 + B: a full trough stands at it) climbs from it; above
 #               where it meets the older surface, that surface is untouched:
-#               z(x) = min(relict(x), z_valley + C*x^2),  z_valley = z_ridge - R(t)
-#               (the parabola as a polyline on SEC_N cells; the min is exact for polylines)
-#   landslide   R -> R': the surface becomes a straight line of equal area (cut = fill), valley
-#               centre to ridge. If that line would stand above the old ridge, the ridge stays,
-#               the floor rises by R - R', and the line ends at the point x2 of the old surface
-#               where cut = fill. If it would pass below the old floor (a small failure on a U,
-#               whose floor is low and wide), the floor stays, the ridge comes down by R - R',
-#               and the line starts at the point x1 of the old wall where cut = fill: the debris
-#               stops on the wall
-#   ice         the glacier fills the trough to SEC_ICE*C*H(t) above the floor, flat-topped
-#   weakening   a lens under the wall, depth (D / T_intact)*R*4s(1 - s), s = x / x_top
-#   datum       drawn about the mean elevation of the section, which a landslide conserves
+#               z(x) = min(relict(x), z_floor + C*x^2),  z_floor = z_crest - R(t)
+#               (the parabola as a polyline on SEC_N cells; the min is exact for polylines).
+#               The U climbs the wall as the floor goes down: the glacier oversteepens the wall
+#   landslide   R -> R': the crest comes down by R - R' and the floor stays. The failure surface
+#               is a plane from the new crest down at the fixed slope SEC_S, not below the floor:
+#               z(x) = min(old(x), max(z_floor, z_crest' - SEC_S*(1 - x)))  for x >= x_cut,
+#               x_cut the highest point where the plane meets the old surface; old(x) below it
+#               A slab off the upper wall, however large the drop: the wall is never gentler
+#               than SEC_S, and a drop to R' < SEC_S leaves a flat floor at the wall's foot. The
+#               debris is not kept in the section (it lands on the glacier and is carried away)
+#   ice         the glacier fills the trough to min(SEC_ICE*C*H(t), SEC_CAP*R) above the floor,
+#               flat-topped: never over the crest
+#   weakening   a lens under the upper wall (glacier_app.js), depth (D / T_intact)*R*6.75*s^2*(1 - s)
+#   datum       the floor: drawn at -SEC_DATUM*C, so a full trough is about centred
 # Nothing here feeds back on R(t).
 SEC_N = 32
 SEC_ICE = 0.6
+SEC_CAP = 0.9   # the ice never fills more than this fraction of the relief
+SEC_DATUM = 0.45  # the floor is drawn at -SEC_DATUM*C
+SEC_S = 1.0     # slope of a landslide's failure surface (dz/dx in section units)
 
 def value_at(poly, t):
     """value on a time-ordered polyline at t, after any step at exactly t (as glacier_model.js)"""
@@ -256,57 +262,56 @@ def sec_surface(rel, R, C):
     if rel[0][1] - zv <= EPS: return [v[:] for v in rel]
     return sec_min(rel, sec_trough(zv, max(C, R)))
 
+def sec_plane(zc, zf):
+    """max(zf, zc - SEC_S*(1 - x)) on [0, 1]: the failure plane from the crest, not below the floor"""
+    if zc - SEC_S >= zf: return [[0.0, zc - SEC_S], [1.0, zc]]
+    return [[0.0, zf], [1.0 - (zc - zf) / SEC_S, zf], [1.0, zc]]
+
 def sec_landslide(cur, Rn):
-    zr = cur[-1][1]; z0 = cur[0][1]; a = sec_area(cur) - 0.5 * Rn
-    if a < z0:                                     # floor kept, ridge down: line from x1 on the wall
-        zt = z0 + Rn; A1 = sec_area(cur); lo, hi = 0.0, 1.0
-        for _ in range(60):
-            mid = 0.5 * (lo + hi); zm = sec_value(cur, mid)
-            if (1.0 - mid) * 0.5 * (zm + zt) - (A1 - sec_area(cur, mid)) > 0: lo = mid
-            else: hi = mid
-        x1 = 0.5 * (lo + hi)
-        return [v[:] for v in cur if v[0] < x1 - 1e-9] + [[x1, sec_value(cur, x1)], [1.0, zt]]
-    if a + Rn <= zr + EPS: return [[0.0, a], [1.0, a + Rn]]
-    a = zr - Rn; lo, hi = 0.0, 1.0
-    for _ in range(60):
-        mid = 0.5 * (lo + hi)
-        if mid * 0.5 * (a + sec_value(cur, mid)) - sec_area(cur, mid) > 0: lo = mid
-        else: hi = mid
-    x2 = 0.5 * (lo + hi)
-    return [[0.0, a], [x2, sec_value(cur, x2)]] + [v[:] for v in cur if v[0] > x2 + 1e-9]
+    """(surface, x_cut): rock above the failure plane is removed from x_cut to the crest, where
+    x_cut is the highest point at which the plane meets the old surface; below it the old
+    surface is kept (the glacier's bed is not touched unless the plane reaches the floor)"""
+    zf = cur[0][1]; new = sec_min(cur, sec_plane(zf + Rn, zf)); i = len(new) - 1
+    while i > 0 and new[i][1] < sec_value(cur, new[i][0]) - 1e-12: i -= 1
+    xc = new[i][0]
+    return [v[:] for v in cur if v[0] < xc - 1e-12] + new[i:], xc
 
 def sec_C(p):
     return p["T0"] + p["B"]
 
 def section_states(sim):
-    """[{t, rel, pre}]: the relict surface from each landslide on, from a flat surface at t = 0"""
-    C = sec_C(sim["p"]); rel = [[0.0, 0.0], [1.0, 0.0]]; out = [dict(t=0.0, rel=rel, pre=None)]
+    """[{t, rel, pre}]: the relict surface from each landslide on; at t = 0 a crest at 0 with
+    the failure slope below it, floor at -R0"""
+    p = sim["p"]; C = sec_C(p); rel = sec_plane(0.0, -p["R0"]); out = [dict(t=0.0, rel=rel, pre=None, ghost=None)]
     for f in sim["fails"]:
         if f["frm"] - f["to"] <= EPS: continue
-        cur = sec_surface(rel, f["frm"], C); rel = sec_landslide(cur, f["to"])
-        out.append(dict(t=f["t"], rel=rel, pre=cur))
+        cur = sec_surface(rel, f["frm"], C); rel, xc = sec_landslide(cur, f["to"])
+        # ghost: the part of the old surface that failed (x_cut to the crest)
+        out.append(dict(t=f["t"], rel=rel, pre=cur, xcut=xc,
+                        ghost=[[xc, sec_value(cur, xc)]] + [v[:] for v in cur if v[0] > xc + 1e-12]))
     return out
 
 def section_at(sim, states, t):
     p = sim["p"]; C = sec_C(p); k = 0
     while k + 1 < len(states) and states[k + 1]["t"] <= t: k += 1
     st = states[k]; R = value_at(sim["path"], t)
-    cur = sec_surface(st["rel"], R, C); m = sec_area(cur)
+    cur = sec_surface(st["rel"], R, C); m = cur[0][1] + SEC_DATUM * C
     pts = [[v[0], v[1] - m] for v in cur]
     # intact threshold at t: buttressing at the ice nodes, linear between (as the model)
     ice = sim["ice"]; n = len(ice) - 1; i = min(max(int(t / p["dtH"]), 0), n - 1)
     ba, bb = p["B"] * butt(ice[i][1], p), p["B"] * butt(ice[i + 1][1], p)
     Ti = p["T0"] + ba + (bb - ba) * (t - ice[i][0]) / (ice[i + 1][0] - ice[i][0])
     H = value_at(ice, t)
-    return dict(pts=pts, R=R, ghost=[[v[0], v[1] - m] for v in st["pre"]] if st["pre"] else None,
+    return dict(pts=pts, R=R, ghost=[[v[0], v[1] - m] for v in st["ghost"]] if st["ghost"] else None,
                 age=t - st["t"], weak=max(0.0, (Ti - value_at(sim["thr"], t)) / Ti),
-                H=H, zIce=pts[0][1] + SEC_ICE * C * H)
+                H=H, zIce=pts[0][1] + min(SEC_ICE * C * H, SEC_CAP * R))
 
 def section_fingerprint(extra=None):
     s = simulate(extra); states = section_states(s); out = "%d" % (len(states) - 1)
     for t in [37.3, 101.9, 171.3, 199.9]:
         sec = section_at(s, states, t); pts = sec["pts"]
         out += " %.9f %d %.9f" % (sum(abs(v[1]) + v[0] for v in pts), len(pts), sec["zIce"] + sec["weak"])
+        out += " %d" % (len(sec["ghost"]) if sec["ghost"] else 0)
     return out
 
 

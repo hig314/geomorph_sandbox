@@ -49,8 +49,8 @@
       "How many seconds the record takes to draw across the slide. It changes nothing in the model, only the pace of the animation.", null),
     theme: M("Slide background", [], "Light or dark, to match the deck. Colours only; the saved SVG uses the theme shown.", null),
     frame: M("Sliders in the frame", [], "The two sliders, weakening and erosion rate, sit inside the 16:9 frame under the ice panel, where they stay visible in full screen. They are the same quantities as the controls of the same name below and move together with them. The saved SVG does not include them.", null),
-    section: M("Cross-section", ["z(x) = min( z<sub>relict</sub>(x),  z<sub>floor</sub> + C·x² ),   C = T<sub>0</sub> + B,   z<sub>ridge</sub> − z<sub>floor</sub> = R(t)", "landslide R → R′:  straight line with  ∫cut dx = ∫fill dx", "ice level:  z<sub>floor</sub> + 0.6·C·H(t);   damaged depth at x:  R · D / T<sub>intact</sub> · 4s(1 − s)"],
-      "The same history drawn as a valley, in the circle at the lower left: a glacial trough in the middle with its glacier, a ridge either side, rock dark and the glacier blue. The height from the valley floor to the ridge crest is the relief on the graph at the time cursor, at every instant. <b>Glacial erosion:</b> the glacier cuts the floor down and a U, a parabola z ∝ x² (the usual shape of a glacial trough), climbs from it; above where it meets the older surface, that surface is untouched. A full U, floor to crest, stands at the highest threshold. Erosion stops while the glacier is gone. <b>Landslide:</b> the wall is replaced by a straight, gentler line that removes as much rock from above as it lays down below. Most failures start part-way up the wall: the crest comes down and the debris stops on the wall, above the floor. A large one reaches the floor and the crest stays. The glacier then cuts the U back into the bottom of the scar. <b>Glacier:</b> fills the trough to a depth set by the ice thickness on the graph. <b>Weakening:</b> damaged rock is a pale lens under each wall, nothing at the floor and the crest and thickest half-way up; its depth there is the same fraction of the wall's height as the threshold has lost to damage, and the landslide that removes the damage removes it. The section is drawn about its mean elevation, which a landslide does not change; the glacier's export of debris is not shown. It is a reading of R(t), with no effect on it; the thin line after a landslide is the surface that failed.", SRC, "asserted"),
+    section: M("Cross-section", ["z(x) = min( z<sub>relict</sub>(x),  z<sub>floor</sub> + C·x² ),   C = T<sub>0</sub> + B,   z<sub>crest</sub> − z<sub>floor</sub> = R(t)", "landslide R → R′:  z ← min( z,  max( z<sub>floor</sub>,  z<sub>crest</sub>′ − S·(1 − x) ) ),   z<sub>crest</sub>′ = z<sub>floor</sub> + R′,   S = 1", "ice level:  z<sub>floor</sub> + min( 0.6·C·H(t),  0.9·R );   damaged depth:  R · D / T<sub>intact</sub> · 6.75·s²(1 − s)"],
+      "The same history drawn as a valley, in the circle at the lower left: a glacial trough in the middle with its glacier, a crest either side, rock dark and the glacier blue. The height from the valley floor to the crest is the relief on the graph at the time cursor, at every instant. The surface is the lower of two shapes. <b>Glacial erosion:</b> the glacier cuts the floor down and a U, a parabola z ∝ x² (the usual shape of a glacial trough), climbs from it; above where it meets the older surface, that surface is untouched. As the floor goes down the U climbs the wall and steepens it, to a full U, floor to crest, at the highest threshold. Erosion stops while the glacier is gone. <b>Landslide:</b> the crest comes down by the drop in relief and the floor stays. The failure surface is a plane from the new crest down at a fixed slope (about 37° as drawn), so a landslide is a slab off the upper wall and the wall is never gentler than that slope, however large the drop; a very large one leaves a flat floor at the wall's foot, into which the glacier cuts a new U. The debris is not kept in the section: it lands on the glacier and is carried away. <b>Glacier:</b> fills the trough to a depth set by the ice thickness on the graph, and never more than 90 % of the relief. <b>Weakening:</b> damaged rock is a pale lens under the upper wall, thinning out downwards and thickest two thirds of the way up; its depth there is the same fraction of the wall's height as the threshold has lost to damage, and the landslide that removes the damage removes it. The floor is held at a fixed level in the circle, so erosion shows as the walls growing taller above the glacier. It is a reading of R(t), with no effect on it; the thin line after a landslide is the surface that failed.", SRC, "asserted"),
     ref: M("Threshold without damage", ["T<sub>intact</sub> = T<sub>0</sub> + B·b(H),   b = (1 − e<sup>−H/H<sub>s</sub></sup>) / (1 − e<sup>−1/H<sub>s</sub></sup>),   H<sub>s</sub> = 0.3"],
       "A faded, wide line behind the threshold: what the threshold would be with buttressing alone and no fracturing. The gap between it and the dashed threshold is the damage standing in the rock at that moment; it closes at every landslide.", SRC, null),
     R0: M("Initial relief R<sub>0</sub>", ["R(200 ka) = R<sub>0</sub>"],
@@ -185,7 +185,7 @@
     fracG.selectAll("line").data(sim.fracs).enter().append("line")
       .attr("x1", function (d) { return x(d.t); }).attr("x2", function (d) { return x(d.t); })
       .attr("y1", function (d) { return y(d.from); }).attr("y2", function (d) { return y(d.to); })
-      .attr("stroke", pal.ink).attr("stroke-width", 2.5 * WT).attr("stroke-linecap", "butt");
+      .attr("stroke", pal.ink).attr("stroke-width", 1.25 * WT).attr("stroke-linecap", "round");
     var dRel = poly(sim.path, y);
     relief.attr("stroke", pal.ink).attr("d", dRel); hitRelief.attr("d", dRel);
     secStates = GL.sectionStates(sim);
@@ -208,22 +208,24 @@
     for (i = right.length - 1; i > 0; i--) out.push([-right[i][0], right[i][1]]);
     return out.concat(right);
   }
-  // Damaged rock: a lens under each wall from the floor (x = 0) to the top of the wall xt (the
-  // crest, or the edge of what is left of the original flat), of vertical depth
-  // lost · 4s(1 − s), s = x / xt, with lost = weak · R at mid-wall (as app.js).
+  // Damaged rock: a lens under the upper wall, from a quarter of the way up the wall (xs) to the
+  // crest, of vertical depth lost · 6.75·s²(1 − s), s = (x − xs) / (1 − xs): it thins out
+  // smoothly downwards and is thickest two thirds of the way up, where the next slab comes off.
+  // lost = weak · R. The wall starts at the end of any flat floor (x0).
   function secLens(pts, lost) {
-    var n = pts.length, xt = pts[n - 1][1] - pts[n - 2][1] < 1e-9 ? pts[n - 2][0] : 1;
-    if (!(lost > 0) || xt < 1e-6) return null;
-    var xs = [], top = [], bot = [], i, j = 0, xx, z, sx, a, b, d = "";
-    for (i = 0; i <= 24; i++) xs.push(xt * i / 24);
-    for (i = 1; i < n - 1; i++) if (pts[i][0] < xt) xs.push(pts[i][0]);
+    var n = pts.length, x0 = 0, i, j = 0, xs0, xs = [], top = [], bot = [], xx, z, sx, a, b, d = "";
+    if (!(lost > 0)) return null;
+    for (i = 1; i < n; i++) if (pts[i][1] - pts[0][1] < 1e-9) x0 = pts[i][0];
+    xs0 = x0 + 0.25 * (1 - x0);
+    for (i = 0; i <= 24; i++) xs.push(xs0 + (1 - xs0) * i / 24);
+    for (i = 1; i < n - 1; i++) if (pts[i][0] > xs0) xs.push(pts[i][0]);
     xs.sort(function (u, w) { return u - w; });
     for (i = 0; i < xs.length; i++) {
       xx = xs[i];
       while (j + 2 < n && pts[j + 1][0] < xx) j++;
       a = pts[j]; b = pts[j + 1];
-      z = a[1] + (b[1] - a[1]) * (xx - a[0]) / (b[0] - a[0]); sx = xx / xt;
-      top.push([xx, z]); bot.push([xx, z - lost * 4 * sx * (1 - sx)]);
+      z = a[1] + (b[1] - a[1]) * (xx - a[0]) / (b[0] - a[0]); sx = (xx - xs0) / (1 - xs0);
+      top.push([xx, z]); bot.push([xx, z - lost * 6.75 * sx * sx * (1 - sx)]);
     }
     [function (q) { return q; }, function (q) { return [-q[0], q[1]]; }, function (q) { return [2 - q[0], q[1]]; }, function (q) { return [q[0] - 2, q[1]]; }]
       .forEach(function (tf) { d += secPath(top.map(tf), "M") + secPath(bot.map(tf).reverse(), "L") + "Z"; });
@@ -244,6 +246,12 @@
     });
     return { fill: fill, top: top };
   }
+  // The surface that failed, x_cut to the crest, on both flanks of both crests.
+  function secScar(g) {
+    var a = g.slice(), i;
+    for (i = g.length - 2; i >= 0; i--) a.push([2 - g[i][0], g[i][1]]);
+    return secPath(a, "M") + secPath(a.map(function (q) { return [-q[0], q[1]]; }), "M");
+  }
   function drawSection() {
     if (state.section === "off") return;
     var sec = GL.sectionAt(sim, secStates, tc), f = secCycle(sec.pts), top = secPath(f, "M");
@@ -252,7 +260,7 @@
     secRock.attr("d", top + "L" + xb + "," + yb + "L" + xa + "," + yb + "Z");
     secWeak.attr("d", secLens(sec.pts, sec.weak * sec.R));
     secIce.attr("d", gl.fill); secIceTop.attr("d", gl.top);
-    secGhost.attr("d", fade > 0 ? secPath(secCycle(sec.ghost), "M") : null).attr("stroke-opacity", fade);
+    secGhost.attr("d", fade > 0 ? secScar(sec.ghost) : null).attr("stroke-opacity", fade);
   }
 
   // Everything that follows the time cursor.
@@ -311,7 +319,7 @@
     return GS.ui.curveTip("Cross-section", pal.rock, "fill",
       "A glacial trough of the slope whose relief the graph plots: valley floor to crest is " + sec.R.toFixed(2) + " T<sub>0</sub> at the time cursor" +
       (sec.H > 0 ? ", with the glacier " + Math.round(100 * sec.H) + " % of its largest thickness." : ", and the glacier is gone.") +
-      " The glacier cuts a U into the floor; each landslide slices the wall straight and gentler, and the U is cut back into it from the bottom." +
+      " The glacier cuts a U from the floor up and steepens the wall; each landslide takes a slab off the upper wall and lowers the crest, leaving a straight slope." +
       (sec.weak > 0.005 ? " The pale lens is damaged rock: " + Math.round(100 * sec.weak) + " % of the threshold lost to fracturing; the next landslide removes it." : "") + " Details on the Cross-section control below.",
       "z(x) = min( z<sub>relict</sub>,  z<sub>floor</sub> + C·x² )");
   });
