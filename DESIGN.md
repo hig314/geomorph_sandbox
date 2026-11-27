@@ -263,12 +263,12 @@ thin ice, compressed for thick); each change in buttressing fractures the rock i
 regular steps (Weakening slider); glacial erosion raises relief at a constant rate (Erosion
 rate slider). Fracture steps drawn solid and black, round-capped (2026-11-27); the ice is thick
 (interglacials keep ~40 %) and plunges in the last 600 years (climate change). Starts at relief 1.3 T0, held up by the ice; at erosion × 0.25 and no weakening
-relief builds through the glacials. Exact event model, Python mirror and 116
+relief builds through the glacials. Exact event model, Python mirror and 130
 checks; rules and choices in `docs/relief_limit.md`. A second glacier history, `?ice=retreat`
 (2026-11-27): gone early in both interglacials (a small stade in the last one), re-advancing
 in the late Holocene, then gone;
 no erosion and no buttressing while the ice is gone. A cross-section in a circle at the lower left
-(2026-11-27): a glacial trough (parabolic U) with its glacier, read from the same history. Landslides there are wedges off the upper wall, relief has a frictional floor (0.7 T0), and bedding drawn in the rock rises at the erosion rate; the rule and the floor follow an exploratory section model, `py/xsection_experiment.py` (not a tier). On production `gc_outline_43` since 2026-11-27:
+(2026-11-27): a glacial trough (parabolic U) with its glacier, read from the same history. Landslides there are wedges off the upper wall, relief has a frictional floor (0.7 T0; damage cannot take the threshold below it, and a slope at the floor ravels instead of failing), and bedding drawn in the rock rises at the erosion rate; the rule and the floor follow an exploratory section model, `py/xsection_experiment.py` (not a tier). On production `gc_outline_43` since 2026-11-27:
 slide 42 the thick history, slide 44 the retreating one.
 
 ### The deck

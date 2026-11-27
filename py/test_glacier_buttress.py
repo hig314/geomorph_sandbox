@@ -52,13 +52,14 @@ for c in SETS:
     mono = all(b[0] >= a[0] for a, b in zip(path, path[1:]))
     for a, b in zip(path, path[1:]):
         if b[0] > a[0] + 1e-12:
-            worst["slope"] = max(worst["slope"], abs((b[1] - a[1]) / (b[0] - a[0]) - (E if erosion_on(ice, 0.5 * (a[0] + b[0])) else 0.0)))
+            rv = (gb.value_at(s["ravel"], b[0] - 1e-12) - gb.value_at(s["ravel"], a[0])) / (b[0] - a[0])   # ravelling on this segment
+            worst["slope"] = max(worst["slope"], abs((b[1] - a[1]) / (b[0] - a[0]) + rv - (E if erosion_on(ice, 0.5 * (a[0] + b[0])) else 0.0)))
         else:
             mono = mono and b[1] <= a[1] + 1e-12
     check(tag + " time monotone, drops only downward", mono)
     # budget
     drops = sum(f["frm"] - f["to"] for f in s["fails"])
-    r = abs(path[0][1] + E * ice_time(ice) - drops - path[-1][1]); worst["budget"] = max(worst["budget"], r)
+    r = abs(path[0][1] + E * ice_time(ice) - drops - s["ravel"][-1][1] - path[-1][1]); worst["budget"] = max(worst["budget"], r)
     # threshold reconstructed from the event lists: T0 + B·H − Dmg, Dmg = Σ fracture drops since the last failure
     ev = sorted([(f["t"], 0, f["drop"]) for f in s["fracs"]] + [(f["t"], 1, 0) for f in s["fails"]])
     ok = True
@@ -92,8 +93,20 @@ for c in SETS:
     for f in s["fracs"]:
         worst["quota"] = max(worst["quota"], abs(stress(butt_poly(s), prev, f["t"]) - f["q"])); prev = f["t"]
         ok = ok and abs(f["q"] - p["qMean"]) <= p["qJit"] * p["qMean"] + 1e-12
-        ok = ok and abs(f["drop"] - p["W"] * f["q"]) < 1e-12
-    check(tag + " fracture drop = W × quota", ok)
+        ok = ok and -1e-15 <= f["drop"] <= p["W"] * f["q"] + 1e-12
+    # damage: W × quota at each fracture, up to the cohesion T0 − floor in all between landslides
+    dm = 0.0; cap = max(p["T0"] - p["floor"], 0.0)
+    for (te, kind, dr, wq) in sorted([(f["t"], 0, f["drop"], p["W"] * f["q"]) for f in s["fracs"]] + [(f["t"], 1, 0, 0) for f in s["fails"]]):
+        if kind == 1: dm = 0.0
+        else:
+            ok = ok and abs(dr - min(wq, cap - dm)) < 1e-12; dm += dr
+    check(tag + " fracture drop = W × quota, damage at most the cohesion T0 − floor", ok)
+    # ravelling: only within the smallest landslide of the floor, and never a landslide smaller than that
+    rvok = all(b[1] >= a[1] for a, b in zip(s["ravel"], s["ravel"][1:]))
+    for a, b in zip(s["ravel"], s["ravel"][1:]):
+        if b[1] > a[1] + 1e-12: rvok = rvok and gb.value_at(path, b[0]) - p["floor"] < min(p["dMin"], p["dMax"]) + 1e-9
+    rvok = rvok and all(f["frm"] - f["to"] >= min(p["dMin"], p["dMax"]) - 1e-9 for f in s["fails"])
+    check(tag + " ravelling only within the smallest landslide of the floor; no landslide smaller than that", rvok, "ravelled %.3f" % s["ravel"][-1][1])
     # failures: at the threshold, to max(T − d, floor), d within the cut-offs, damage cleared
     okf = all(abs(f["frm"] - f["lim"]) < 1e-9 or f["frm"] >= f["lim"] - 1e-9 for f in s["fails"])
     okf = okf and all(abs(f["to"] - max(f["lim"] - f["d"], p["floor"])) < 1e-12 for f in s["fails"])
@@ -104,10 +117,10 @@ for c in SETS:
 
 print("worst: budget %.1e, threshold reconstruction %.1e, quota vs ∫|d(B·b)| %.1e, growth slope − E %.1e" %
       (worst["budget"], worst["thr"], worst["quota"], worst["slope"]))
-check("relief budget R0 + E·(time with ice) − Σdrops = R_end", worst["budget"] < 1e-9)
+check("relief budget R0 + E·(time with ice) − Σdrops − ravelled = R_end", worst["budget"] < 1e-9)
 check("threshold = T0 + B·b(H) − damage since the last failure", worst["thr"] < 1e-9)
 check("each fracture after exactly its quota of buttressing change ∫|d(B·b)|", worst["quota"] < 1e-9)
-check("relief grows at exactly E with ice, not at all without", worst["slope"] < 1e-9)
+check("relief grows at exactly E with ice (less any ravelling), not at all without", worst["slope"] < 1e-9)
 
 # W = 0: no damage, the threshold is the buttressed one; fractures still drawn at the same times
 s0 = gb.simulate({"W": 0}); s1 = gb.simulate({})
@@ -154,12 +167,12 @@ def stepped(params, dt):
     n = int(round(p["tmax"] / dt))
     for k in range(1, n + 1):
         t = p["tmax"] * k / n; bn = ice_at(bp, t); acc += abs(bn - bo); bo = bn; R += (E if erosion_on(ice, t - 0.5 * dt) else 0.0) * dt
-        if acc >= q: D += p["W"] * q; acc -= q; q = nq()
+        if acc >= q: D = min(D + p["W"] * q, max(1 - p["floor"], 0.0)); acc -= q; q = nq()
         T = 1 - D + ice_at(bp, t)
         if R >= T:
-            d = nd(); Rn = max(T - d, p["floor"])
-            if Rn < R: out.append(t); R = Rn
-            D = 0.0
+            if R - p["floor"] < min(p["dMin"], p["dMax"]): R = T          # ravelling at the floor
+            else:
+                d = nd(); R = max(T - d, p["floor"]); out.append(t); D = 0.0
     return out, R
 for c in [{}, {"W": 0}, {"E": 2}, {"ice": "retreat"}]:
     ex = gb.simulate(c); tf = [f["t"] for f in ex["fails"]]; errs = []
@@ -212,7 +225,7 @@ for c in SETS + [{"ice": "retreat", "W": 3}, {"W": 3, "E": 3}, {"R0": 0.2}]:
         # no benches (every slope > 0), and the slope into the crest is at least the one the last landslide left
         kk = max(j for j in range(len(states)) if states[j]["t"] <= t); Rk = states[kk]["rel"][-1][1] - states[kk]["rel"][0][1]
         ok_steep = ok_steep and all(b[1] > a[1] for a, b in zip(p, p[1:])) \
-            and (p[-1][1] - p[-2][1]) / (p[-1][0] - p[-2][0]) >= min(S, tan_slope(Rk, C)) - 1e-9
+            and (p[-1][1] - p[-2][1]) / (p[-1][0] - p[-2][0]) >= min(S, tan_slope(min(Rk, sec["R"]), C)) - 1e-9
         # the glacier's bed is smooth at the valley centre (no notch): flat, or the U's first chord
         ok_bed = ok_bed and (p[1][1] - p[0][1]) / p[1][0] <= C / gb.SEC_N + 1e-9
         # carving only removes rock: the surface is never above the one the last landslide left
