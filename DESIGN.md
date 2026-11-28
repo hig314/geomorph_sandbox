@@ -191,10 +191,12 @@ Static bundle, no build step, so any tier drops into a landslidescience.org Djan
   carves convincing valleys?
 - Which tiers get the lockstep A/B view first (cheapest in d1 and d2; d3 doubles the cost).
 
-## 8. State of play (2026-11-24) — the one dated snapshot in this file
+## 8. State of play (2026-11-28) — the one dated snapshot in this file
 
 Two lines of work. The ladder (d1, d2, d3) has been paused since 2026-09-29; the work since
-2026-11-21 is a presentation figure, `relief_limit/`. Everything below is committed, pushed
+2026-11-21 is a presentation figure, `relief_limit/`, and since 2026-11-26 its glacier
+slide, `relief_limit/glacier.html`, which is where the last session (2026-11-27) stopped: see
+"Glacier buttressing" and "The deck" below. Everything below is committed, pushed
 and live at <https://hig314.github.io/geomorph_sandbox/>.
 
 ### The ladder (paused at 2026-09-29)
@@ -271,6 +273,27 @@ no erosion and no buttressing while the ice is gone. A cross-section in a circle
 (2026-11-27): a glacial trough (parabolic U) with its glacier, read from the same history. Landslides there are wedges off the upper wall, relief has a frictional floor (0.7 T0; damage takes only the cohesion above it, and a landslide at most half the relief above it, so landslides near the floor are rarer and smaller, never zero), and bedding drawn in the rock rises at the erosion rate; the rule and the floor follow an exploratory section model, `py/xsection_experiment.py` (not a tier). On production `gc_outline_43` since 2026-11-27:
 slide 42 the thick history, slide 44 the retreating one.
 
+Last changes (2026-11-27, commits `ad17812`, `bd80df0`, `0a23e37`; the user: "pretty happy with
+where we are"):
+- Damage is cohesion-limited, Dmg = Dc (1 - exp(-D/Dc)), Dc = T0 - floor: fracturing never
+  stops but its steps shrink as the rock nears fully broken, and landslides near the floor get
+  rarer and smaller. Two earlier tries were rejected and should not be retried without asking:
+  a hard damage cap with "ravelling" near the floor (the user: damage must keep accumulating),
+  and linear uncapped damage (a train of invisible landslides).
+- Section: the ice may cover the crests at peak glaciation (ice level factor 1.0, no cap), the
+  walls are steeper (56 deg as drawn) and the valley narrower; the line marking the failed
+  surface is gone.
+- Transport: "Play slow" (5x the time, key S); click or drag in the graphs to move through
+  time; left/right arrows step 1 kyr when paused (Shift: 10 kyr). Inside the deck the arrows
+  still turn slides and Play slow is not shown; click and drag work.
+
+Flagged to the user and not answered, so still open: the floor at 0.7 T0; the ice level
+factor, wall slope and valley width of the section; fracture marks that shrink to dots near
+the floor (the alternative is full-size marks with a lower floor); the Weakening slider
+saturating (thick ice: 22 landslides at x1 and at x3); details of the rock texture.
+Validation: `py/test_glacier_buttress.py`, 116 checks, all pass; the Python and browser
+fingerprints agree (stored in the test and in `docs/relief_limit.md`).
+
 ### The deck
 
 The figure is presented from a deck on landslidescience.org (slide 37 of
@@ -289,10 +312,15 @@ the deck. A change reaches the deck only when the user asks for it:
 
 Keep the message contract in `relief_limit/app.js` (`relief-step` in, `deck-key` out).
 
-State of the copies at 2026-11-24: the production deck matches this repository at `d56122c`
-(verified by checksum, not by viewing the deck, which needs the owner's sign-in). The dev
+State of the copies at 2026-11-28: the production deck in use, `gc_outline_43` (the 4:3 copy
+edited since 2026-11-26; relief figure on slide 36, glacier on 42 and 44), matches this
+repository at `0a23e37`, deployed 2026-11-27 (two files, `glacier_app.js` and
+`glacier_model.js`; verified by checksum and a local scratch-deck run, not by viewing the
+deck, which needs the owner's sign-in; the old copies are on the server in
+`/root/backup_glacier_<date_time>/`). The older deck `gc_outline` was last matched at `d56122c`
+(2026-11-24) and has not had the glacier slide. The dev
 site's copy has not been updated since before 2026-11-23. The Presentation repository's `live/` copy matches too
-(its commit `525376b`).
+(its commit `8605cf0`).
 
 ## 9. Decisions (2026-09-25)
 
