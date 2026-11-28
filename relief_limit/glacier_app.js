@@ -24,8 +24,7 @@
   // the middle with its glacier, a ridge either side; the half-spacing is SEC_W radii. The
   // highest threshold, T0 + B (a full trough), spans SEC_FILL of the diameter. Rock and the
   // damage lens in the relief figure's colours, the glacier a mid blue so it reads on the rock.
-  // The surface a landslide failed from lingers as a thin line for SEC_GHOST of the record.
-  var SEC_R = 150, SEC_X = 130 + (1590 - 130) * 0.175, SEC_Y = 700 - 150 - 14, SEC_W = 0.62, SEC_FILL = 0.46, SEC_GHOST = 0.03;
+  var SEC_R = 150, SEC_X = 130 + (1590 - 130) * 0.175, SEC_Y = 700 - 150 - 14, SEC_W = 0.62, SEC_FILL = 0.46;
   var WT = 4, FONT = "Helvetica Neue, Helvetica, Arial, sans-serif";
   var W_REF = GL.DEFAULTS.W; // weakening at "× 1"
   // glacial stages, labelled under the ice panel's time axis: [age at the label, text, anchor]
@@ -50,7 +49,7 @@
     theme: M("Slide background", [], "Light or dark, to match the deck. Colours only; the saved SVG uses the theme shown.", null),
     frame: M("Sliders in the frame", [], "The two sliders, weakening and erosion rate, sit inside the 16:9 frame under the ice panel, where they stay visible in full screen. They are the same quantities as the controls of the same name below and move together with them. The saved SVG does not include them.", null),
     section: M("Cross-section", ["z(x) = min( z<sub>relict</sub>(x),  z<sub>floor</sub> + C·x² ),   C = T<sub>0</sub> + B,   z<sub>crest</sub> − z<sub>floor</sub> = R(t)", "landslide R → R′:  z ← min( z,  z<sub>crest</sub>′ − s·(1 − x) )  above where they meet,   z<sub>crest</sub>′ = z<sub>floor</sub> + R′,   s = min( 1.5,  s<sub>tangent</sub> )", "ice level:  z<sub>floor</sub> + C·H(t);   damaged depth:  R · D / T<sub>intact</sub> · 6.75·s²(1 − s)"],
-      "The same history drawn as a valley, in the circle at the lower left: a glacial trough in the middle with its glacier, a crest either side, rock dark and the glacier blue. The height from the valley floor to the crest is the relief on the graph at the time cursor, at every instant. The surface is the lower of two shapes. <b>Glacial erosion:</b> the glacier cuts the floor down and a U, a parabola z ∝ x² (the usual shape of a glacial trough), climbs from it; above where it meets the older surface, that surface is untouched. As the floor goes down the U climbs the wall and steepens it, to a full U, floor to crest, at the highest threshold. Erosion stops while the glacier is gone. <b>Landslide:</b> a wedge off the upper wall. The crest comes down by the drop in relief, the failure surface is a plane from the new crest down to the wall (56° as drawn; after a very large drop, the steepest plane that still meets the trough, down to about 39°), and the trough below it is never touched, so the floor stays a U. The debris is not kept in the section: it lands on the glacier and is carried away. This is what a stability analysis of such a section gives (py/xsection_experiment.py: wedges above the ice surface on planes of 40–47°, the trough below surviving). <b>Glacier:</b> fills the trough to a depth set by the ice thickness on the graph; the thickest ice stands as high as the highest crest, so where it is thicker than the relief it covers the crests. <b>Weakening:</b> damaged rock is a pale lens under the upper wall, thinning out downwards and thickest two thirds of the way up; its depth there is the same fraction of the wall's height as the threshold has lost to damage (and at most half the height above the floor), and the landslide that removes the damage removes it. The floor is held at a fixed level in the circle, so erosion shows as the walls growing taller above the glacier and the bedding rising through them (Rock texture). It is a reading of R(t), with no effect on it; the thin line after a landslide is the surface that failed.", SRC, "asserted"),
+      "The same history drawn as a valley, in the circle at the lower left: a glacial trough in the middle with its glacier, a crest either side, rock dark and the glacier blue. The height from the valley floor to the crest is the relief on the graph at the time cursor, at every instant. The surface is the lower of two shapes. <b>Glacial erosion:</b> the glacier cuts the floor down and a U, a parabola z ∝ x² (the usual shape of a glacial trough), climbs from it; above where it meets the older surface, that surface is untouched. As the floor goes down the U climbs the wall and steepens it, to a full U, floor to crest, at the highest threshold. Erosion stops while the glacier is gone. <b>Landslide:</b> a wedge off the upper wall. The crest comes down by the drop in relief, the failure surface is a plane from the new crest down to the wall (56° as drawn; after a very large drop, the steepest plane that still meets the trough, down to about 39°), and the trough below it is never touched, so the floor stays a U. The debris is not kept in the section: it lands on the glacier and is carried away. This is what a stability analysis of such a section gives (py/xsection_experiment.py: wedges above the ice surface on planes of 40–47°, the trough below surviving). <b>Glacier:</b> fills the trough to a depth set by the ice thickness on the graph; the thickest ice stands as high as the highest crest, so where it is thicker than the relief it covers the crests. <b>Weakening:</b> damaged rock is a pale lens under the upper wall, thinning out downwards and thickest two thirds of the way up; its depth there is the same fraction of the wall's height as the threshold has lost to damage (and at most half the height above the floor), and the landslide that removes the damage removes it. The floor is held at a fixed level in the circle, so erosion shows as the walls growing taller above the glacier and the bedding rising through them (Rock texture). It is a reading of R(t), with no effect on it.", SRC, "asserted"),
     texture: M("Rock texture", ["offset(t) = ∫ E dt  (glacial erosion so far), upwards;   period 1.2 × the circle's diameter"],
       "Bedding drawn faintly in the rock of the cross-section: folded beds of uneven thickness, cut by a few short faults whose throw dies out towards their tips. It moves upwards past the valley floor at the erosion rate: the floor is held still in the circle, so rock uplift equal to the glacier's downcutting shows as the beds rising through the walls, and they stand still while the glacier is gone. The pattern repeats every 1.2 circle diameters, so no repeat is in view at once. It is decoration that carries one fact (uplift = erosion); the folds and faults are drawn, not modelled. The slider is its contrast; 0 hides it.", SRC, "asserted"),
     ref: M("Threshold without damage", ["T<sub>intact</sub> = T<sub>0</sub> + B·b(H),   b = (1 − e<sup>−H/H<sub>s</sub></sup>) / (1 − e<sup>−1/H<sub>s</sub></sup>),   H<sub>s</sub> = 0.3"],
@@ -140,7 +139,6 @@
   var secTexG = secIn.append("g").attr("clip-path", "url(#gb-rock)"), secTex = secTexG.append("g");
   var secWeak = secIn.append("path"), secIce = secIn.append("path");
   var secIceTop = secIn.append("path").attr("fill", "none").attr("stroke-width", WT / 2);
-  var secGhost = secIn.append("path").attr("fill", "none").attr("stroke-width", WT / 2);
   var secRing = secG.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R).attr("fill", "none").attr("stroke-width", WT);
   var hitSec = svg.append("circle").attr("cx", SEC_X).attr("cy", SEC_Y).attr("r", SEC_R).attr("fill", "transparent").style("pointer-events", "all").style("cursor", "help");
   var secStates = null;
@@ -203,7 +201,7 @@
     secTexG.style("display", state.texture > 0 ? null : "none");
     secTex.selectAll("path.bed").attr("stroke", pal.tex).attr("stroke-opacity", state.texture);
     secTex.selectAll("path.fault").attr("stroke", pal.tex).attr("stroke-opacity", Math.min(1, 1.5 * state.texture));
-    secIce.attr("fill", pal.secIce); secIceTop.attr("stroke", pal.ice); secGhost.attr("stroke", pal.ink); secRing.attr("stroke", pal.axis);
+    secIce.attr("fill", pal.secIce); secIceTop.attr("stroke", pal.ice); secRing.attr("stroke", pal.axis);
   }
 
   // The cross-section at the time cursor (GL.sectionAt): the half-section x in [0, 1] (valley
@@ -309,17 +307,10 @@
     });
     return { fill: fill, top: top };
   }
-  // The surface that failed, x_cut to the crest, on both flanks of both crests.
-  function secScar(g) {
-    var a = g.slice(), i;
-    for (i = g.length - 2; i >= 0; i--) a.push([2 - g[i][0], g[i][1]]);
-    return secPath(a, "M") + secPath(a.map(function (q) { return [-q[0], q[1]]; }), "M");
-  }
   function drawSection() {
     if (state.section === "off") return;
     var sec = GL.sectionAt(sim, secStates, tc), f = secCycle(sec.pts), top = secPath(f, "M");
     var xa = SEC_X - 2.5 * SEC_R, xb = SEC_X + 2.5 * SEC_R, yb = SEC_Y + 2 * SEC_R, gl = secGlacier(sec.pts, sec.zIce);
-    var fade = sec.ghost ? Math.max(0, 1 - sec.age / (SEC_GHOST * sim.p.tmax)) : 0;
     secRock.attr("d", top + "L" + xb + "," + yb + "L" + xa + "," + yb + "Z");
     secRockClip.attr("d", top + "L" + xb + "," + yb + "L" + xa + "," + yb + "Z");
     if (state.texture > 0) {
@@ -329,7 +320,6 @@
     }
     secWeak.attr("d", secLens(sec.pts, sec.weak * sec.R));
     secIce.attr("d", gl.fill); secIceTop.attr("d", gl.top);
-    secGhost.attr("d", fade > 0 ? secScar(sec.ghost) : null).attr("stroke-opacity", fade);
   }
 
   // Everything that follows the time cursor.
@@ -428,6 +418,29 @@
   }
   function pause() { playing = false; buttons(); }
   function replay() { tc = 0; draw(); playing = false; play(); }
+  // Free navigation: go to a time (kyr from the start); playing carries on from there.
+  function seek(t) { tc = Math.max(0, Math.min(sim.p.tmax, t)); lastNow = performance.now(); draw(); buttons(); }
+  // A click or drag inside the graphs (relief or ice thickness) moves the time cursor there.
+  var scrub = null;
+  function svgPoint(ev) {
+    var m = svg.node().getScreenCTM(), pt;
+    if (!m) return null;
+    pt = svg.node().createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    return pt.matrixTransform(m.inverse());
+  }
+  svg.on("pointerdown", function (ev) {
+    var q = svgPoint(ev);
+    if (ev.button || !q || q.x < X0 || q.x > X1 || q.y < Y1 || q.y > IY0) return;
+    scrub = { was: playing }; playing = false;
+    if (svg.node().setPointerCapture) svg.node().setPointerCapture(ev.pointerId);
+    seek(sim.p.tmax * (q.x - X0) / (X1 - X0)); ev.preventDefault();
+  }).on("pointermove", function (ev) {
+    var q = scrub && svgPoint(ev);
+    if (q) seek(sim.p.tmax * (q.x - X0) / (X1 - X0));
+  }).on("pointerup pointercancel", function () {
+    var was = scrub && scrub.was; scrub = null;
+    if (was && tc < sim.p.tmax) play();
+  });
   // Play slow: the same record in SLOW times the drawing time; Play and Replay go back to normal speed.
   function setSlow(on) { slow = on ? SLOW : 1; }
   function fullscreen() {
@@ -450,7 +463,7 @@
   tp.append("button").text("Replay").on("click", function () { setSlow(false); replay(); this.blur(); });
   tp.append("button").text("Full screen").on("click", function () { fullscreen(); this.blur(); });
   tp.append("button").text("Save SVG").attr("title", "The frame as shown, 1920 × 1080, self-contained").on("click", function () { saveSvg(); this.blur(); });
-  tp.append("span").attr("class", "keys").html("<kbd>space</kbd> play / pause  ·  <kbd>S</kbd> play slow  ·  <kbd>R</kbd> replay  ·  <kbd>F</kbd> full screen");
+  tp.append("span").attr("class", "keys").html("<kbd>space</kbd> play / pause  ·  <kbd>←</kbd> <kbd>→</kbd> step when paused  ·  click or drag in the graphs to move  ·  <kbd>S</kbd> play slow  ·  <kbd>R</kbd> replay  ·  <kbd>F</kbd> full screen");
   function buttons() { playBtn.text(playing ? "Pause" : "Play"); }
 
   d3.select(window).on("keydown", function (ev) {
@@ -467,6 +480,10 @@
     else if (k === "s" || k === "S") { setSlow(true); play(); }
     else if (k === "r" || k === "R") { setSlow(false); replay(); }
     else if (k === "f" || k === "F") fullscreen();
+    else if (k === "ArrowRight" || k === "ArrowLeft") {            // paused: step the time cursor (shift: ten times as far)
+      if (playing) return;
+      seek(tc + (k === "ArrowRight" ? 1 : -1) * (ev.shiftKey ? 10 : 1) * sim.p.tmax / 200);
+    }
     else return;
     ev.preventDefault();
   });

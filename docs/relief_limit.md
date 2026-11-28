@@ -376,12 +376,12 @@ by landslides from the crest down:
                 stands still while the glacier is gone. Drawn, not modelled (user direction,
                 2026-11-27)
 
-The failed part of the surface (x_cut to the crest) lingers as a thin line for 3 % of the
-record. "Cross-section" (URL `section=off`) hides it. Choices open to change: C, the parabola,
-the failure slope S, the ice depth factor 0.6 and its cap, the debris leaving the section, the
+(Until 2026-11-27 the failed part of the surface lingered as a thin line after each landslide;
+removed as distracting.) "Cross-section" (URL `section=off`) hides it. Choices open to change: C, the parabola,
+the failure slope S, the ice depth factor, the debris leaving the section, the
 flat ice surface, the floor as datum.
 
-"Play slow" (key S, 2026-11-27) plays the record in 5 × the drawing time; Play and Replay return to normal speed. `?t=<kyr from the start>` opens the figure paused at that time (to look at, or point at, one
+Free navigation (2026-11-27): a click or drag inside either graph moves the time cursor there (playing carries on from it), and with the figure paused ← and → step it by 1 kyr (shift: 10 kyr); inside a deck the arrows still turn the slides. "Play slow" (key S, 2026-11-27) plays the record in 5 × the drawing time; Play and Replay return to normal speed. `?t=<kyr from the start>` opens the figure paused at that time (to look at, or point at, one
 moment; the address bar then drops it).
 
 **Where the landslide rule and the floor come from** (`py/xsection_experiment.py`, 2026-11-27,
